@@ -1,0 +1,82 @@
+name: Run Stock Notifications
+
+on:
+  schedule:
+    # JST 9:05 is UTC 0:05. Run Monday to Friday.
+    - cron: '5 0 * * 1-5'
+    # JST 15:35 is UTC 6:35. Run Monday to Friday.
+    - cron: '35 6 * * 1-5'
+    # Test session: JST 0:07 is UTC 15:07. Run daily.
+    - cron: '7 15 * * *'
+  workflow_dispatch:
+    inputs:
+      session:
+        description: 'Session to run (morning, evening, test)'
+        required: true
+        default: 'morning'
+
+permissions:
+  contents: write
+
+jobs:
+  run-notifications:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy pandas scipy yfinance pyarrow python-dotenv requests
+
+      - name: Determine session parameter
+        id: session-selector
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "SESSION=${{ github.event.inputs.session }}" >> $GITHUB_ENV
+          else
+            # Determine based on cron time or system time
+            # 0:05 UTC -> morning (9:05 JST)
+            # 6:35 UTC -> evening (15:35 JST)
+            HOUR=$(date -u +%H)
+            if [ "$HOUR" -lt "3" ]; then
+              echo "SESSION=morning" >> $GITHUB_ENV
+            else
+              echo "SESSION=evening" >> $GITHUB_ENV
+            fi
+          fi
+
+      - name: Run notification check
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          python run_notification.py --session ${{ env.SESSION }}
+
+      - name: Commit and push state changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Check if there are changes in notification configuration files
+          git status --porcelain
+          
+          # Stage configuration files
+          git add notification_config.json notification_state.json artifacts/favorites.json
+          
+          # Only commit and push if there are changes staged
+          if ! git diff --quiet --cached; then
+            git commit -m "Update notification configuration and state [skip ci]"
+            git push
+          else
+            echo "No config changes to commit."
+          fi

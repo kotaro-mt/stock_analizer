@@ -1,0 +1,46 @@
+{
+  "enabled": true,
+  "target": "favorites",
+  "checks": {
+    "weekly_macd_cross": {
+      "enabled": true,
+      "macd_params": {
+        "fast": 12,
+        "slow": 26,
+        "signal": 9
+      }
+    },
+    "price_alert": {
+      "enabled": true,
+      "alerts": []
+    },
+    "daily_macd_cross": {
+      "enabled": true,
+      "macd_params": {
+        "fast": 12,
+        "slow": 26,
+        "signal": 9
+      }
+    }
+  },
+  "global_defaults": {
+    "weekly_macd_cross": true,
+    "daily_macd_cross": false,
+    "price_alert": true
+  },
+  "tickers": {
+    "7013.T": {
+      "weekly_macd_cross": true,
+      "price_alerts": [],
+      "price_alert": false
+    },
+    "5253.T": {
+      "weekly_macd_cross": true,
+      "price_alerts": []
+    },
+    "7203.T": {
+      "price_alerts": [],
+      "price_alert": false
+    }
+  }
+}

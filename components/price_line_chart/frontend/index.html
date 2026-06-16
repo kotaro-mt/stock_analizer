@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'IBM Plex Sans JP','Hiragino Sans',sans-serif;
+  background:transparent;overflow:hidden;
+}
+
+/* ---- wrapper ---- */
+#wrapper{position:relative;width:100%}
+#plotly-chart{width:100%}
+
+/* ---- floating toolbar ---- */
+#toolbar{
+  position:absolute;top:6px;left:50%;transform:translateX(-50%);
+  z-index:1000;display:flex;align-items:center;gap:6px;
+  background:rgba(251,248,239,.95); /* matching --surface */
+  backdrop-filter:blur(8px);
+  border:1.5px solid #14110E; /* matching --ink */
+  border-radius:0px; /* square block theme */
+  padding:6px 12px;
+  box-shadow:3px 3px 0 #14110E; /* stamped ink block shadow */
+  transition:all .2s;
+}
+#toolbar.active{
+  border-color:#B7362E; /* matching --shu */
+  box-shadow:3px 3px 0 #B7362E;
+}
+
+.tb-btn{
+  padding:5px 12px;border:1.5px solid #14110E;border-radius:0px;
+  cursor:pointer;font-size:12px;font-weight:600;
+  transition:all .15s;white-space:nowrap;
+  font-family:'IBM Plex Sans JP','Hiragino Sans',sans-serif;
+}
+#toggle-btn{background:#F4EFE3;color:#14110E}
+#toggle-btn:hover{background:#ECE5D3}
+#toggle-btn.active{background:#B7362E;color:#F4EFE3;border-color:#B7362E}
+
+#price-badge{
+  color:#B7362E;font-weight:700;font-size:14px;
+  font-family:'IBM Plex Mono',monospace;
+  font-variant-numeric:tabular-nums;
+  min-width:90px;text-align:center;display:none;
+}
+#direction-sel{
+  padding:4px 8px;border-radius:0px;
+  border:1.5px solid #14110E;background:#F4EFE3;color:#14110E;
+  font-family:'IBM Plex Sans JP','Hiragino Sans',sans-serif;
+  font-size:12px;display:none;cursor:pointer;
+}
+#register-btn{background:#2E6B47;color:#ffffff;border-color:#14110E;display:none}
+#register-btn:hover{background:#245437}
+#cancel-btn{background:#B7362E;color:#ffffff;border-color:#14110E;display:none}
+#cancel-btn:hover{background:#8A231C}
+
+/* ---- draggable horizontal line (HTML overlay, NOT a Plotly shape) ---- */
+#drag-line{
+  position:absolute;left:0;right:0;height:0;
+  border-top:2px dashed #B7362E; /* --shu red dashed line */
+  z-index:500;display:none;
+  pointer-events:auto;cursor:ns-resize;
+  filter:drop-shadow(0 0 2px rgba(183,54,46,.3));
+}
+/* wider invisible hit-area for easier grabbing */
+#drag-line::before{
+  content:'';position:absolute;
+  top:-10px;left:0;right:0;height:22px;
+  cursor:ns-resize;
+}
+#drag-line-label{
+  position:absolute;right:4px;top:-11px;
+  background:#B7362E;color:#F4EFE3; /* --shu red background, --paper text */
+  border:1px solid #14110E;
+  padding:2px 8px;border-radius:0px; /* square stamp */
+  font-size:11px;font-weight:700;
+  font-family:'IBM Plex Mono',monospace;
+  white-space:nowrap;font-variant-numeric:tabular-nums;
+  pointer-events:none;
+}
+
+/* ---- loading overlay ---- */
+#loading{
+  position:absolute;top:0;left:0;right:0;bottom:0;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(244,239,227,.8);z-index:2000; /* matching --paper with opacity */
+  color:#14110E;font-size:14px;
+}
+#loading.hidden{display:none}
+</style>
+</head>
+<body>
+<div id="wrapper">
+
+  <div id="toolbar">
+    <button id="toggle-btn" class="tb-btn">📏 アラートラインを設定</button>
+    <span id="price-badge"></span>
+    <select id="direction-sel">
+      <option value="above">📈 上抜け</option>
+      <option value="below">📉 下抜け</option>
+    </select>
+    <button id="register-btn" class="tb-btn">✅ 登録</button>
+    <button id="cancel-btn" class="tb-btn">✖</button>
+  </div>
+
+  <div id="drag-line">
+    <div id="drag-line-label"></div>
+  </div>
+
+  <div id="plotly-chart"></div>
+  <div id="loading">チャート読込中…</div>
+</div>
+
+<!-- Plotly.js from CDN (cached by browser after first load) -->
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  /* ================================================================
+     Streamlit bi-directional component communication helpers
+     ================================================================ */
+  function sendMsg(type,data){
+    window.parent.postMessage(
+      Object.assign({isStreamlitMessage:true,type:type},data),"*");
+  }
+  function setFrameHeight(h){sendMsg("streamlit:setFrameHeight",{height:h})}
+  function setComponentValue(v){sendMsg("streamlit:setComponentValue",{value:v})}
+
+  /* ================================================================
+     DOM refs
+     ================================================================ */
+  var chartEl    = document.getElementById("plotly-chart");
+  var dragLine   = document.getElementById("drag-line");
+  var dragLabel  = document.getElementById("drag-line-label");
+  var toolbar    = document.getElementById("toolbar");
+  var toggleBtn  = document.getElementById("toggle-btn");
+  var badge      = document.getElementById("price-badge");
+  var dirSel     = document.getElementById("direction-sel");
+  var regBtn     = document.getElementById("register-btn");
+  var cancelBtn  = document.getElementById("cancel-btn");
+  var loadingEl  = document.getElementById("loading");
+
+  /* ================================================================
+     State
+     ================================================================ */
+  var hasPlotted    = false;
+  var lineVisible   = false;
+  var isDragging    = false;
+  var currentPrice  = 0;
+  var lastClose     = 0;
+
+  // drag bookkeeping
+  var dragStartMouseY = 0;
+  var dragStartTop    = 0;
+
+  /* ================================================================
+     UI helpers
+     ================================================================ */
+  function showControls(show){
+    var d = show ? "inline-block" : "none";
+    badge.style.display      = d;
+    dirSel.style.display     = d;
+    regBtn.style.display     = d;
+    cancelBtn.style.display  = d;
+    dragLine.style.display   = show ? "block" : "none";
+    toolbar.classList.toggle("active",show);
+    toggleBtn.classList.toggle("active",show);
+    toggleBtn.textContent = show ? "✏️ ドラッグで移動" : "📏 アラートラインを設定";
+  }
+
+  function updatePriceDisplay(){
+    var txt = currentPrice.toLocaleString() + "円";
+    badge.textContent   = "💰 " + txt;
+    dragLabel.textContent = txt;
+    dirSel.value = currentPrice >= lastClose ? "above" : "below";
+  }
+
+  /* ---- Y-axis pixel boundaries (accounts for subplot domain) ----
+   * The chart may have subplots (volume, MACD). The price y-axis
+   * only occupies a fraction of the total plot height, defined by
+   * yaxis.domain = [bottomFrac, topFrac].  All pixel conversions
+   * MUST use these bounds, not the full _size.h.
+   */
+  function getAxisBounds(){
+    var ya = chartEl._fullLayout.yaxis;
+    var ps = chartEl._fullLayout._size;
+    var dom = ya.domain || [0,1];
+    // Plotly domain: 0 = bottom of plot area, 1 = top of plot area
+    // Pixel y:  ps.t = top edge,  ps.t + ps.h = bottom edge
+    var topPx  = ps.t + ps.h * (1 - dom[1]);  // pixel-y of axis TOP
+    var botPx  = ps.t + ps.h * (1 - dom[0]);  // pixel-y of axis BOTTOM
+    return {topPx:topPx, botPx:botPx, hPx:botPx-topPx, ya:ya, ps:ps};
+  }
+
+  /* Convert data-Y → pixel-Y (relative to #plotly-chart top) */
+  function dataYtoPixel(dataY){
+    var b = getAxisBounds();
+    var frac = (dataY - b.ya.range[0]) / (b.ya.range[1] - b.ya.range[0]);
+    return b.botPx - frac * b.hPx;
+  }
+
+  /* Convert pixel-Y → data-Y */
+  function pixelToDataY(pixY){
+    var b = getAxisBounds();
+    var frac = (b.botPx - pixY) / b.hPx;
+    return b.ya.range[0] + frac * (b.ya.range[1] - b.ya.range[0]);
+  }
+
+  /* Position the overlay line at a data-Y price */
+  function positionLine(dataY){
+    if(!chartEl._fullLayout) return;
+    var b = getAxisBounds();
+    var pxY = dataYtoPixel(dataY);
+    // clamp to price-subplot area only
+    pxY = Math.max(b.topPx, Math.min(b.botPx, pxY));
+    dragLine.style.top   = pxY + "px";
+    dragLine.style.left  = b.ps.l + "px";
+    dragLine.style.width = b.ps.w + "px";
+    dragLine.style.right = "auto";
+  }
+
+  /* ================================================================
+     Toggle button — show / hide the draggable line
+     ================================================================ */
+  toggleBtn.addEventListener("click",function(){
+    if(!lineVisible){
+      lineVisible = true;
+      showControls(true);
+      // Place line at current close price
+      currentPrice = Math.round(lastClose);
+      positionLine(currentPrice);
+      updatePriceDisplay();
+    } else {
+      lineVisible = false;
+      showControls(false);
+    }
+  });
+
+  /* ================================================================
+     Register / Cancel
+     ================================================================ */
+  regBtn.addEventListener("click",function(){
+    setComponentValue({
+      price: currentPrice,
+      direction: dirSel.value,
+      _id: "alert_" + Date.now()
+    });
+    lineVisible = false;
+    showControls(false);
+  });
+
+  cancelBtn.addEventListener("click",function(){
+    lineVisible = false;
+    showControls(false);
+  });
+
+  /* ================================================================
+     Drag handling — all in HTML, zero Plotly / Streamlit calls
+     ================================================================ */
+  // mousedown on the drag line element
+  dragLine.addEventListener("mousedown",function(e){
+    isDragging = true;
+    dragStartMouseY = e.clientY;
+    dragStartTop    = parseFloat(dragLine.style.top) || 0;
+    e.preventDefault();
+    e.stopPropagation();
+    document.body.style.cursor = "ns-resize";
+    document.body.style.userSelect = "none";
+  });
+
+  // mousemove anywhere in the document
+  document.addEventListener("mousemove",function(e){
+    if(!isDragging) return;
+    var dy     = e.clientY - dragStartMouseY;
+    var newTop = dragStartTop + dy;
+
+    // clamp to price-subplot area
+    var b = getAxisBounds();
+    newTop = Math.max(b.topPx, Math.min(b.botPx, newTop));
+
+    dragLine.style.top = newTop + "px";
+
+    // convert pixel → data-Y
+    currentPrice = Math.round(pixelToDataY(newTop));
+    updatePriceDisplay();
+  });
+
+  // mouseup
+  document.addEventListener("mouseup",function(){
+    if(isDragging){
+      isDragging = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+  });
+
+  /* ---- touch events for mobile ---- */
+  dragLine.addEventListener("touchstart",function(e){
+    isDragging = true;
+    dragStartMouseY = e.touches[0].clientY;
+    dragStartTop    = parseFloat(dragLine.style.top) || 0;
+    e.preventDefault();
+  },{passive:false});
+
+  document.addEventListener("touchmove",function(e){
+    if(!isDragging) return;
+    var dy     = e.touches[0].clientY - dragStartMouseY;
+    var newTop = dragStartTop + dy;
+    var b = getAxisBounds();
+    newTop = Math.max(b.topPx, Math.min(b.botPx, newTop));
+    dragLine.style.top = newTop + "px";
+    currentPrice = Math.round(pixelToDataY(newTop));
+    updatePriceDisplay();
+  },{passive:true});
+
+  document.addEventListener("touchend",function(){
+    isDragging = false;
+  });
+
+  /* ================================================================
+     Chart zoom/scroll → reposition overlay line
+     ================================================================ */
+  function onChartRelayout(){
+    if(lineVisible && !isDragging){
+      positionLine(currentPrice);
+    }
+  }
+
+  /* ================================================================
+     Render — called by Streamlit on every rerun
+     ================================================================ */
+  function onRender(args){
+    var fig    = JSON.parse(args.figure_json);
+    var height = args.component_height || 700;
+    lastClose  = args.current_price || 0;
+
+    // reset line state on re-render (after registration triggered a rerun)
+    lineVisible = false;
+    showControls(false);
+
+    chartEl.style.height = height + "px";
+
+    var config = {
+      scrollZoom: true,
+      displaylogo: false,
+      responsive: true,
+      modeBarButtonsToAdd: ["drawline","eraseshape"],
+    };
+
+    var plotFn = hasPlotted ? Plotly.react : Plotly.newPlot;
+
+    plotFn(chartEl, fig.data, fig.layout, config).then(function(){
+      loadingEl.classList.add("hidden");
+      if(!hasPlotted){
+        hasPlotted = true;
+        chartEl.on("plotly_relayout", onChartRelayout);
+      }
+      setFrameHeight(height + 50);
+    });
+  }
+
+  /* ================================================================
+     Streamlit component lifecycle
+     ================================================================ */
+  window.addEventListener("message",function(event){
+    if(event.data.type === "streamlit:render"){
+      onRender(event.data.args);
+    }
+  });
+
+  // Signal readiness
+  sendMsg("streamlit:componentReady",{apiVersion:1});
+
+})();
+</script>
+</body>
+</html>

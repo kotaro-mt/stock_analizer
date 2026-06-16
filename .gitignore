@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[oc]
+*.egg-info/
+.venv/
+
+# Project artifacts
+cache/
+artifacts/*
+!artifacts/favorites.json
+results.tsv
+run.log
+
+# Secrets
+.streamlit/secrets.toml
+.env
+
+# Notification state & logs
+notification_state.json
+logs/
+
+# Reference clone kept around; its own ignores are fine
+_autoresearch_clone/__pycache__/
