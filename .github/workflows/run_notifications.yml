@@ -6,8 +6,6 @@ on:
     - cron: '5 0 * * 1-5'
     # JST 15:35 is UTC 6:35. Run Monday to Friday.
     - cron: '35 6 * * 1-5'
-    # Test session: JST 0:12 is UTC 15:12. Run daily.
-    - cron: '12 15 * * *'
   workflow_dispatch:
     inputs:
       session:
