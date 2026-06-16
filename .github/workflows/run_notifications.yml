@@ -70,8 +70,12 @@ jobs:
           # Check if there are changes in notification configuration files
           git status --porcelain
           
-          # Stage configuration files
-          git add notification_config.json notification_state.json artifacts/favorites.json
+          # Stage configuration files if they exist
+          for file in notification_config.json notification_state.json artifacts/favorites.json; do
+            if [ -f "$file" ]; then
+              git add "$file"
+            fi
+          done
           
           # Only commit and push if there are changes staged
           if ! git diff --quiet --cached; then
