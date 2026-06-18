@@ -16,7 +16,6 @@ run.log
 .env
 
 # Notification state & logs
-notification_state.json
 logs/
 
 # Reference clone kept around; its own ignores are fine
