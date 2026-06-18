@@ -45,10 +45,12 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "SESSION=${{ github.event.inputs.session }}" >> $GITHUB_ENV
+          elif [ "${{ github.event.schedule }}" = "5 0 * * 1-5" ]; then
+            echo "SESSION=morning" >> $GITHUB_ENV
+          elif [ "${{ github.event.schedule }}" = "35 6 * * 1-5" ]; then
+            echo "SESSION=evening" >> $GITHUB_ENV
           else
-            # Determine based on cron time or system time
-            # 0:05 UTC -> morning (9:05 JST)
-            # 6:35 UTC -> evening (15:35 JST)
+            # Fallback based on system time if triggered by other schedules
             HOUR=$(date -u +%H)
             if [ "$HOUR" -lt "3" ]; then
               echo "SESSION=morning" >> $GITHUB_ENV
@@ -81,7 +83,9 @@ jobs:
           # Only commit and push if there are changes staged
           if ! git diff --quiet --cached; then
             git commit -m "Update notification configuration and state [skip ci]"
-            git push
+            # Pull latest changes using rebase to prevent non-fast-forward conflict
+            git pull --rebase origin main
+            git push origin main
           else
             echo "No config changes to commit."
           fi
