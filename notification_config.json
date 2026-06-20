@@ -38,14 +38,7 @@
       "price_alerts": [],
       "price_alert": false,
       "date_alerts": [],
-      "trendlines": [
-        {
-          "x0": "2026-03-03",
-          "y0": 4514.3,
-          "x1": "2026-04-20",
-          "y1": 2862.9
-        }
-      ],
+      "trendlines": [],
       "trendline_alert": true
     },
     "5253.T": {
