@@ -2761,6 +2761,7 @@ def main() -> None:
             y1=tl["y1"],
             line=dict(color="#d65a31", width=4.0, dash="solid"),
             editable=True,
+            layer="above",
             row=1, col=1,
         )
 
