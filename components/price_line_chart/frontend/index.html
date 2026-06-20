@@ -291,14 +291,29 @@ body{
     return y+"-"+m+"-"+day;
   }
 
+  /* 土曜→直前の金曜、日曜→翌月曜 にスナップ */
+  function snapToTradingDay(dateStr){
+    /* dateStr は "YYYY-MM-DD" 形式 */
+    var d = new Date(dateStr + "T12:00:00"); /* 正午固定でTZズレ防止 */
+    var dow = d.getDay(); /* 0=日, 6=土 */
+    if(dow === 6){        /* 土曜 → 金曜 */
+      d.setDate(d.getDate() - 1);
+    } else if(dow === 0){ /* 日曜 → 月曜 */
+      d.setDate(d.getDate() + 1);
+    }
+    return _isoDateFromMs(d.getTime());
+  }
+
   function pixelToDate(pixX){
     var b    = getXAxisBounds();
     var frac = (pixX - b.leftPx) / b.wPx;
     frac = Math.max(0, Math.min(1, frac));
     var t0 = new Date(b.xa.range[0]).getTime();
     var t1 = new Date(b.xa.range[1]).getTime();
-    return _isoDateFromMs(t0 + frac * (t1 - t0));
+    var raw = _isoDateFromMs(t0 + frac * (t1 - t0));
+    return snapToTradingDay(raw); /* 土日をスキップ */
   }
+
 
   function dateToPx(dateStr){
     var b   = getXAxisBounds();

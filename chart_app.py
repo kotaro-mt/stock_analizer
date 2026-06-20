@@ -2860,13 +2860,22 @@ def main() -> None:
                 )
             submit_date_btn = st.form_submit_button("➕ 日付アラート追加", use_container_width=True)
             if submit_date_btn:
+                # 土日なら最寄り営業日へ自動補正
+                chosen = alert_date_input
+                if chosen.weekday() == 5:   # 土曜 → 金曜
+                    chosen = chosen - _dt.timedelta(days=1)
+                    st.toast("⚠️ 土曜日のため金曜日に変更しました。")
+                elif chosen.weekday() == 6:  # 日曜 → 月曜
+                    chosen = chosen + _dt.timedelta(days=1)
+                    st.toast("⚠️ 日曜日のため月曜日に変更しました。")
                 date_alerts.append({
-                    "date": str(alert_date_input),
-                    "label": alert_label_input.strip() or str(alert_date_input),
+                    "date": str(chosen),
+                    "label": alert_label_input.strip() or str(chosen),
                 })
                 save_config(noti_config)
-                st.toast(f"📅 日付アラート ({alert_date_input}) を追加しました。")
+                st.toast(f"📅 日付アラート ({chosen}) を追加しました。")
                 st.rerun()
+
 
         if date_alerts:
             st.markdown("**現在設定されている日付アラート一覧:**")
