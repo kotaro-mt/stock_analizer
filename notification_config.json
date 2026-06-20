@@ -14,6 +14,9 @@
       "enabled": true,
       "alerts": []
     },
+    "trendline_alert": {
+      "enabled": true
+    },
     "daily_macd_cross": {
       "enabled": true,
       "macd_params": {
@@ -26,7 +29,8 @@
   "global_defaults": {
     "weekly_macd_cross": true,
     "daily_macd_cross": false,
-    "price_alert": true
+    "price_alert": true,
+    "trendline_alert": true
   },
   "tickers": {
     "7013.T": {

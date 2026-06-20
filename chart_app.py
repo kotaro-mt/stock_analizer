@@ -2750,6 +2750,20 @@ def main() -> None:
                 annotation_font_size=10,
             )
 
+    # Show existing trendline alerts as shapes on the Plotly fig
+    trendlines = ticker_cfg.setdefault("trendlines", [])
+    for tl in trendlines:
+        fig.add_shape(
+            type="line",
+            x0=tl["x0"],
+            y0=tl["y0"],
+            x1=tl["x1"],
+            y1=tl["y1"],
+            line=dict(color="#d65a31", width=2.5, dash="dashdot"),
+            editable=True,
+            row=1, col=1,
+        )
+
     # ---- Render chart via custom component (zero-rerun draggable line) ----
     # Track processed alert IDs to prevent duplicate registration
     _processed_ids = st.session_state.setdefault("_processed_alert_ids", set())
@@ -2790,6 +2804,13 @@ def main() -> None:
                 })
                 save_config(noti_config)
                 st.toast(f"✅ 日付アラート {new_date}（{new_label}）を登録しました")
+                st.rerun()
+            elif "trendlines" in chart_result:
+                # ---- Trendlines alert from user drawings ----
+                ticker_cfg["trendlines"] = chart_result["trendlines"]
+                ticker_cfg["trendline_alert"] = True
+                save_config(noti_config)
+                st.toast("✅ トレンドラインのアラート設定を更新しました")
                 st.rerun()
 
     # ---- Price Alert settings panel (below chart) --------------------------

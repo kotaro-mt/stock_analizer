@@ -310,6 +310,11 @@ def main() -> None:
                     pa_copy["ticker"] = ticker
                     ticker_alerts.append(pa_copy)
                 ticker_check_config["alerts"] = ticker_alerts
+            elif checker_type == "trendline_alert":
+                trendlines = ticker_cfg.get("trendlines", [])
+                if not trendlines:
+                    continue
+                ticker_check_config["trendlines"] = trendlines
 
             try:
                 alerts = checker.check(ticker, name, ticker_check_config, ck_state)

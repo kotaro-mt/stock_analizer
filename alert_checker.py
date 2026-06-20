@@ -581,6 +581,126 @@ def remove_fired_date_alerts(
 
 
 # ---------------------------------------------------------------------------
+# Trendline Alert Checker
+# ---------------------------------------------------------------------------
+class TrendlineAlertChecker(AlertChecker):
+    """Fires when the latest daily candle touches or crosses a user-drawn trendline.
+
+    Checks:
+    - Touching: The latest bar's High-Low range covers the trendline price.
+    - Crossing: The previous Close and current Close are on opposite sides of the trendline.
+    """
+
+    checker_type = "trendline_alert"
+
+    def check(
+        self,
+        ticker: str,
+        name: str,
+        config: dict[str, Any],
+        state: dict[str, Any],
+    ) -> list[Alert]:
+        trendlines = config.get("trendlines", [])
+        if not trendlines:
+            return []
+
+        df = load_ohlcv(ticker, interval="1d")
+        if df is None or len(df) < 2:
+            return []
+
+        t_prev = df.index[-2]
+        t_curr = df.index[-1]
+
+        alerts: list[Alert] = []
+
+        for tl in trendlines:
+            try:
+                x0_str, x1_str = tl.get("x0", ""), tl.get("x1", "")
+                y0, y1 = float(tl.get("y0", 0)), float(tl.get("y1", 0))
+
+                if not x0_str or not x1_str:
+                    continue
+
+                # Parse dates to timestamp objects
+                x0 = pd.to_datetime(x0_str)
+                x1 = pd.to_datetime(x1_str)
+
+                # Ensure order
+                min_x = min(x0, x1)
+                max_x = max(x0, x1)
+
+                # The trendline is active in [x0, x1].
+                # We check if t_curr falls within this range.
+                if not (min_x <= t_curr <= max_x):
+                    continue
+
+                # Calculate line equation slope and target prices
+                span_sec = (x1 - x0).total_seconds()
+                if span_sec == 0:
+                    continue
+
+                y_prev_target = y0 + ((t_prev - x0).total_seconds() / span_sec) * (y1 - y0)
+                y_curr_target = y0 + ((t_curr - x0).total_seconds() / span_sec) * (y1 - y0)
+
+                low_curr = float(df["Low"].iloc[-1])
+                high_curr = float(df["High"].iloc[-1])
+                close_prev = float(df["Close"].iloc[-2])
+                close_curr = float(df["Close"].iloc[-1])
+
+                triggered = False
+
+                # Case 1: Latest daily candle touches the line
+                if low_curr <= y_curr_target <= high_curr:
+                    triggered = True
+
+                # Case 2: Close price crossed the line
+                diff_prev = close_prev - y_prev_target
+                diff_curr = close_curr - y_curr_target
+                if diff_prev * diff_curr <= 0:
+                    triggered = True
+
+                if not triggered:
+                    continue
+
+                # State key based on line coordinates to deduplicate notifications
+                # Using rounded coordinates so minor floating changes don't double-trigger
+                coord_key = f"{x0_str}_{round(y0, 1)}_{x1_str}_{round(y1, 1)}"
+                state_key = f"{ticker}_{coord_key}"
+
+                if state.get(state_key, {}).get("notified"):
+                    continue
+
+                # Trigger alert!
+                alerts.append(
+                    Alert(
+                        alert_type="trendline_alert",
+                        ticker=ticker,
+                        name=name,
+                        message=f"📈 {name}({ticker}) — トレンドラインを突破またはタッチしました（ターゲット: {y_curr_target:,.1f}円）",
+                        details={
+                            "x0": x0_str,
+                            "y0": y0,
+                            "x1": x1_str,
+                            "y1": y1,
+                            "target_price": y_curr_target,
+                            "current_price": close_curr,
+                        },
+                    )
+                )
+
+                # Update notification state in memory
+                state[state_key] = {
+                    "notified": True,
+                    "at": datetime.now(tz=_JST).isoformat(),
+                }
+
+            except Exception:
+                logger.exception("Error checking trendline %s for %s", tl, ticker)
+
+        return alerts
+
+
+# ---------------------------------------------------------------------------
 # Registry — add new checkers here
 # ---------------------------------------------------------------------------
 ALL_CHECKERS: dict[str, type[AlertChecker]] = {
@@ -588,6 +708,7 @@ ALL_CHECKERS: dict[str, type[AlertChecker]] = {
     DailyMACDCrossChecker.checker_type: DailyMACDCrossChecker,
     PriceAlertChecker.checker_type: PriceAlertChecker,
     DateAlertChecker.checker_type: DateAlertChecker,
+    TrendlineAlertChecker.checker_type: TrendlineAlertChecker,
 }
 
 
