@@ -66,7 +66,17 @@
     },
     "7203.T": {
       "price_alerts": [],
-      "price_alert": false
+      "price_alert": false,
+      "date_alerts": [],
+      "trendlines": [
+        {
+          "x0": "2026-02-26 17:18:08.3721",
+          "y0": 3978.7942454097633,
+          "x1": "2026-06-03 23:09:46.0465",
+          "y1": 3054.2690130989704
+        }
+      ],
+      "trendline_alert": true
     }
   }
 }
