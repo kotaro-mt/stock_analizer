@@ -2759,10 +2759,17 @@ def main() -> None:
             y0=tl["y0"],
             x1=tl["x1"],
             y1=tl["y1"],
-            line=dict(color="#d65a31", width=2.5, dash="dashdot"),
+            line=dict(color="#d65a31", width=4.0, dash="solid"),
             editable=True,
             row=1, col=1,
         )
+
+    # Configure the default style for new user-drawn trendlines
+    fig.update_layout(
+        newshape=dict(
+            line=dict(color="#d65a31", width=4.0, dash="solid")
+        )
+    )
 
     # ---- Render chart via custom component (zero-rerun draggable line) ----
     # Track processed alert IDs to prevent duplicate registration

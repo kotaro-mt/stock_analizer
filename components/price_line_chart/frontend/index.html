@@ -243,6 +243,19 @@ body{
   var currentPrice  = 0;
   var lastClose     = 0;
   var currentDate   = "";
+  var lastTrendlines = [];
+
+  function trendlinesEqual(arr1, arr2) {
+    if (arr1.length !== arr2.length) return false;
+    for (var i = 0; i < arr1.length; i++) {
+      var t1 = arr1[i];
+      var t2 = arr2[i];
+      if (t1.x0 !== t2.x0 || t1.y0 !== t2.y0 || t1.x1 !== t2.x1 || t1.y1 !== t2.y1) {
+        return false;
+      }
+    }
+    return true;
+  }
 
   var dragStartMouseY = 0;
   var dragStartTop    = 0;
@@ -713,15 +726,56 @@ body{
       displaylogo: false,
       responsive: true,
       modeBarButtonsToAdd: ["drawline","eraseshape"],
+      edits: {
+        shapePosition: true
+      }
     };
 
     var plotFn = hasPlotted ? Plotly.react : Plotly.newPlot;
 
     plotFn(chartEl, fig.data, fig.layout, config).then(function(){
       loadingEl.classList.add("hidden");
+
+      // Initialize lastTrendlines cache from current chart layout shapes
+      var initialShapes = chartEl.layout.shapes || [];
+      lastTrendlines = initialShapes.filter(function(s) {
+        return s.type === 'line';
+      }).map(function(s) {
+        return {
+          x0: s.x0,
+          y0: s.y0,
+          x1: s.x1,
+          y1: s.y1
+        };
+      });
+
       if(!hasPlotted){
         hasPlotted = true;
         chartEl.on("plotly_relayout", onChartRelayout);
+
+        /* Trendline change detection */
+        chartEl.on("plotly_relayout", function(eventData){
+          var rawShapes = chartEl.layout.shapes || [];
+          var lineShapes = rawShapes.filter(function(s) {
+            return s.type === 'line';
+          }).map(function(s) {
+            return {
+              x0: s.x0,
+              y0: s.y0,
+              x1: s.x1,
+              y1: s.y1
+            };
+          });
+
+          // If the list of lines has changed (added, modified, or deleted), notify Streamlit
+          if (!trendlinesEqual(lineShapes, lastTrendlines)) {
+            lastTrendlines = lineShapes;
+            setComponentValue({
+              trendlines: lineShapes,
+              _id: "trendlines_" + Date.now()
+            });
+          }
+        });
       }
       setFrameHeight(height + 50);
     });
