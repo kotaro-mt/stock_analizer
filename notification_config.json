@@ -68,14 +68,7 @@
       "price_alerts": [],
       "price_alert": false,
       "date_alerts": [],
-      "trendlines": [
-        {
-          "x0": "2026-03-02",
-          "y0": 3941.57,
-          "x1": "2026-06-16",
-          "y1": 2923.97
-        }
-      ],
+      "trendlines": [],
       "trendline_alert": true
     }
   }
