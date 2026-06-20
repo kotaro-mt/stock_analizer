@@ -245,12 +245,32 @@ body{
   var currentDate   = "";
   var lastTrendlines = [];
 
+  function normalizeDate(val) {
+    if (!val) return "";
+    var d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      var y = d.getFullYear();
+      var m = String(d.getMonth()+1).padStart(2,"0");
+      var day = String(d.getDate()).padStart(2,"0");
+      return y+"-"+m+"-"+day;
+    }
+    return String(val);
+  }
+
+  function normalizePrice(val) {
+    var p = parseFloat(val);
+    return isNaN(p) ? 0 : Math.round(p * 100) / 100;
+  }
+
   function trendlinesEqual(arr1, arr2) {
     if (arr1.length !== arr2.length) return false;
     for (var i = 0; i < arr1.length; i++) {
       var t1 = arr1[i];
       var t2 = arr2[i];
-      if (t1.x0 !== t2.x0 || t1.y0 !== t2.y0 || t1.x1 !== t2.x1 || t1.y1 !== t2.y1) {
+      if (normalizeDate(t1.x0) !== normalizeDate(t2.x0) ||
+          normalizePrice(t1.y0) !== normalizePrice(t2.y0) ||
+          normalizeDate(t1.x1) !== normalizeDate(t2.x1) ||
+          normalizePrice(t1.y1) !== normalizePrice(t2.y1)) {
         return false;
       }
     }
@@ -740,10 +760,10 @@ body{
         return s.type === 'line';
       }).map(function(s) {
         return {
-          x0: s.x0,
-          y0: s.y0,
-          x1: s.x1,
-          y1: s.y1
+          x0: normalizeDate(s.x0),
+          y0: normalizePrice(s.y0),
+          x1: normalizeDate(s.x1),
+          y1: normalizePrice(s.y1)
         };
       });
 
@@ -767,9 +787,17 @@ body{
 
           // If the list of lines has changed (added, modified, or deleted), notify Streamlit
           if (!trendlinesEqual(lineShapes, lastTrendlines)) {
-            lastTrendlines = lineShapes;
+            var normalizedShapes = lineShapes.map(function(s) {
+              return {
+                x0: normalizeDate(s.x0),
+                y0: normalizePrice(s.y0),
+                x1: normalizeDate(s.x1),
+                y1: normalizePrice(s.y1)
+              };
+            });
+            lastTrendlines = normalizedShapes;
             setComponentValue({
-              trendlines: lineShapes,
+              trendlines: normalizedShapes,
               _id: "trendlines_" + Date.now()
             });
           }
