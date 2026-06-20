@@ -36,7 +36,17 @@
     "7013.T": {
       "weekly_macd_cross": true,
       "price_alerts": [],
-      "price_alert": false
+      "price_alert": false,
+      "date_alerts": [],
+      "trendlines": [
+        {
+          "x0": "2026-03-03 03:20:55.8139",
+          "y0": 4558.581845165207,
+          "x1": "2026-06-19",
+          "y1": 2604.8520969197825
+        }
+      ],
+      "trendline_alert": true
     },
     "5253.T": {
       "weekly_macd_cross": true,
