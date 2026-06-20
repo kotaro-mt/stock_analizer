@@ -749,9 +749,7 @@ body{
       editable: true
     };
 
-    var plotFn = hasPlotted ? Plotly.react : Plotly.newPlot;
-
-    plotFn(chartEl, fig.data, fig.layout, config).then(function(){
+    Plotly.newPlot(chartEl, fig.data, fig.layout, config).then(function(){
       loadingEl.classList.add("hidden");
 
       // Initialize lastTrendlines cache from current chart layout shapes
@@ -767,42 +765,41 @@ body{
         };
       });
 
-      if(!hasPlotted){
-        hasPlotted = true;
-        chartEl.on("plotly_relayout", onChartRelayout);
+      // Bind event listeners (newPlot clears previous listeners)
+      chartEl.on("plotly_relayout", onChartRelayout);
 
-        /* Trendline change detection */
-        chartEl.on("plotly_relayout", function(eventData){
-          var rawShapes = chartEl.layout.shapes || [];
-          var lineShapes = rawShapes.filter(function(s) {
-            return s.type === 'line';
-          }).map(function(s) {
+      /* Trendline change detection */
+      chartEl.on("plotly_relayout", function(eventData){
+        var rawShapes = chartEl.layout.shapes || [];
+        var lineShapes = rawShapes.filter(function(s) {
+          return s.type === 'line';
+        }).map(function(s) {
+          return {
+            x0: s.x0,
+            y0: s.y0,
+            x1: s.x1,
+            y1: s.y1
+          };
+        });
+
+        // If the list of lines has changed (added, modified, or deleted), notify Streamlit
+        if (!trendlinesEqual(lineShapes, lastTrendlines)) {
+          var normalizedShapes = lineShapes.map(function(s) {
             return {
-              x0: s.x0,
-              y0: s.y0,
-              x1: s.x1,
-              y1: s.y1
+              x0: normalizeDate(s.x0),
+              y0: normalizePrice(s.y0),
+              x1: normalizeDate(s.x1),
+              y1: normalizePrice(s.y1)
             };
           });
+          lastTrendlines = normalizedShapes;
+          setComponentValue({
+            trendlines: normalizedShapes,
+            _id: "trendlines_" + Date.now()
+          });
+        }
+      });
 
-          // If the list of lines has changed (added, modified, or deleted), notify Streamlit
-          if (!trendlinesEqual(lineShapes, lastTrendlines)) {
-            var normalizedShapes = lineShapes.map(function(s) {
-              return {
-                x0: normalizeDate(s.x0),
-                y0: normalizePrice(s.y0),
-                x1: normalizeDate(s.x1),
-                y1: normalizePrice(s.y1)
-              };
-            });
-            lastTrendlines = normalizedShapes;
-            setComponentValue({
-              trendlines: normalizedShapes,
-              _id: "trendlines_" + Date.now()
-            });
-          }
-        });
-      }
       setFrameHeight(height + 50);
     });
   }
