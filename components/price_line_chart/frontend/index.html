@@ -135,6 +135,15 @@ body{
   pointer-events:none;
 }
 
+/* ---- transparent overlay: blocks chart pan/zoom during date mode ---- */
+#vline-overlay{
+  position:absolute;
+  z-index:250;          /* above Plotly, below vline(500) and toolbar(1000) */
+  display:none;
+  cursor:ew-resize;
+  background:transparent;
+}
+
 /* ---- loading overlay ---- */
 #loading{
   position:absolute;top:0;left:0;right:0;bottom:0;
@@ -178,6 +187,9 @@ body{
     <div id="drag-vline-label"></div>
   </div>
 
+  <!-- transparent overlay: captures mouse in date mode to block chart pan/zoom -->
+  <div id="vline-overlay"></div>
+
   <div id="plotly-chart"></div>
   <div id="loading">チャート読込中…</div>
 </div>
@@ -217,6 +229,7 @@ body{
   var labelInput    = document.getElementById("label-input");
   var dateRegBtn    = document.getElementById("date-register-btn");
   var dateCancelBtn = document.getElementById("date-cancel-btn");
+  var vlineOverlay  = document.getElementById("vline-overlay");
   var loadingEl     = document.getElementById("loading");
 
   /* ================================================================
@@ -337,6 +350,22 @@ body{
     dragVLine.style.right  = "auto";
   }
 
+  /* オーバーレイをプロットエリアに合わせて配置 */
+  function updateVlineOverlay(){
+    if(!chartEl._fullLayout) return;
+    var b  = getXAxisBounds();
+    var ps = chartEl._fullLayout._size;
+    vlineOverlay.style.left   = b.leftPx + "px";
+    vlineOverlay.style.top    = ps.t + "px";
+    vlineOverlay.style.width  = b.wPx + "px";
+    vlineOverlay.style.height = ps.h + "px";
+    vlineOverlay.style.display = "block";
+  }
+
+  function hideVlineOverlay(){
+    vlineOverlay.style.display = "none";
+  }
+
   /* ================================================================
      Price line UI helpers
      ================================================================ */
@@ -374,6 +403,8 @@ body{
     if(show) toolbar.classList.add("active-date");
     dateToggleBtn.classList.toggle("active", show);
     dateToggleBtn.textContent = show ? "✏️ ドラッグで移動" : "📅 日付アラートを設定";
+    /* オーバーレイ: dateモード中はプロット操作をブロック */
+    if(show){ updateVlineOverlay(); } else { hideVlineOverlay(); }
   }
 
   function updateDateDisplay(){
@@ -409,12 +440,26 @@ body{
       vlineVisible = true;
       showDateControls(true);
       labelInput.value = "";
-      // Place vline at mid of current x-axis view
       if(chartEl._fullLayout){
         var b  = getXAxisBounds();
         var t0 = new Date(b.xa.range[0]).getTime();
         var t1 = new Date(b.xa.range[1]).getTime();
-        currentDate = _isoDateFromMs((t0+t1)/2);
+
+        /* 今日の日付を初期位置に設定。
+           表示範囲外の場合は範囲の右端（最新日）にフォールバック */
+        var todayMs = Date.now();
+        var todayStr = snapToTradingDay(_isoDateFromMs(todayMs));
+        var todayT = new Date(todayStr + "T12:00:00").getTime();
+
+        if(todayT >= t0 && todayT <= t1){
+          currentDate = todayStr;
+        } else if(todayT > t1){
+          /* 今日が表示範囲より未来 → 範囲の右端仙8近 */
+          currentDate = snapToTradingDay(_isoDateFromMs(t1));
+        } else {
+          /* 今日が表示範囲より過去 → 範囲の右端仙8近 */
+          currentDate = snapToTradingDay(_isoDateFromMs(t1 - (t1-t0)*0.05));
+        }
         positionVLine(currentDate);
         updateDateDisplay();
       }
@@ -467,7 +512,7 @@ body{
   });
 
   /* ================================================================
-     Date line drag — mouse
+     Date line drag — mouse (directly on the vline)
      ================================================================ */
   dragVLine.addEventListener("mousedown",function(e){
     isDraggingV = true;
@@ -478,6 +523,32 @@ body{
     document.body.style.cursor     = "ew-resize";
     document.body.style.userSelect = "none";
   });
+
+  /* ================================================================
+     Overlay mousedown — click anywhere in the plot area to place/drag
+     (also blocks chart pan/zoom while in date mode)
+     ================================================================ */
+  vlineOverlay.addEventListener("mousedown",function(e){
+    var rect   = chartEl.getBoundingClientRect();
+    var pixX   = e.clientX - rect.left;
+    var bx     = getXAxisBounds();
+    pixX = Math.max(bx.leftPx, Math.min(bx.rightPx, pixX));
+
+    /* Snap vline to click position immediately */
+    dragVLine.style.left = pixX + "px";
+    currentDate = pixelToDate(pixX);
+    updateDateDisplay();
+
+    /* Start dragging from here */
+    isDraggingV     = true;
+    dragStartMouseX = e.clientX;
+    dragStartLeft   = pixX;
+    e.preventDefault();
+    e.stopPropagation();
+    document.body.style.cursor     = "ew-resize";
+    document.body.style.userSelect = "none";
+  });
+
 
   /* ================================================================
      Combined mousemove
@@ -570,7 +641,10 @@ body{
      ================================================================ */
   function onChartRelayout(){
     if(lineVisible  && !isDragging)  positionLine(currentPrice);
-    if(vlineVisible && !isDraggingV) positionVLine(currentDate);
+    if(vlineVisible && !isDraggingV){
+      positionVLine(currentDate);
+      updateVlineOverlay(); /* オーバーレイも再配置 */
+    }
   }
 
   /* ================================================================
