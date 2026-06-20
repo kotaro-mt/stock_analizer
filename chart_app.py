@@ -2777,6 +2777,13 @@ def main() -> None:
     _processed_ids = st.session_state.setdefault("_processed_alert_ids", set())
     _chart_key = f"chart_line_{ticker}"
 
+    chart_result = price_line_chart(
+        fig,
+        current_price=curr_p,
+        height=700,
+        key=_chart_key,
+    )
+
     # Debug logging to trace shapes and result
     try:
         from datetime import datetime
@@ -2800,13 +2807,6 @@ def main() -> None:
     except Exception as e:
         with open(r"c:\Users\matsu\OneDrive\claude\stock_future\debug_trendlines.txt", "a", encoding="utf-8") as debug_f:
             debug_f.write(f"Logging error: {str(e)}\n")
-
-    chart_result = price_line_chart(
-        fig,
-        current_price=curr_p,
-        height=700,
-        key=_chart_key,
-    )
 
     # Process alert registration from the component
     if chart_result is not None:
