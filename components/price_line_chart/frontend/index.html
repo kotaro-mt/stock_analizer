@@ -319,6 +319,30 @@ body{
 
   function pixelToDate(pixX){
     var b    = getXAxisBounds();
+    var xa   = b.xa;
+    if (xa && typeof xa.p2c === 'function') {
+      try {
+        var cVal = xa.p2c(pixX - b.leftPx);
+        var dateStr = "";
+        if (typeof xa.c2d === 'function') {
+          dateStr = xa.c2d(cVal);
+        } else {
+          var dateVal = new Date(cVal);
+          if (!isNaN(dateVal.getTime())) {
+            dateStr = _isoDateFromMs(dateVal.getTime());
+          }
+        }
+        if (dateStr) {
+          var match = dateStr.match(/^\d{4}-\d{2}-\d{2}/);
+          if (match) {
+            return snapToTradingDay(match[0]);
+          }
+        }
+      } catch (err) {
+        console.error("Plotly p2c conversion error:", err);
+      }
+    }
+    // Fallback:
     var frac = (pixX - b.leftPx) / b.wPx;
     frac = Math.max(0, Math.min(1, frac));
     var t0 = new Date(b.xa.range[0]).getTime();
@@ -330,6 +354,24 @@ body{
 
   function dateToPx(dateStr){
     var b   = getXAxisBounds();
+    var xa  = b.xa;
+    if (xa && typeof xa.c2p === 'function') {
+      try {
+        var cVal;
+        if (typeof xa.d2c === 'function') {
+          cVal = xa.d2c(dateStr);
+        } else {
+          cVal = new Date(dateStr).getTime();
+        }
+        var pVal = xa.c2p(cVal);
+        if (typeof pVal === 'number' && !isNaN(pVal)) {
+          return b.leftPx + pVal;
+        }
+      } catch (err) {
+        console.error("Plotly c2p conversion error:", err);
+      }
+    }
+    // Fallback:
     var t   = new Date(dateStr).getTime();
     var t0  = new Date(b.xa.range[0]).getTime();
     var t1  = new Date(b.xa.range[1]).getTime();
@@ -587,6 +629,7 @@ body{
       isDraggingV = false;
       document.body.style.cursor     = "";
       document.body.style.userSelect = "";
+      positionVLine(currentDate);
     }
   });
 
@@ -633,7 +676,10 @@ body{
 
   document.addEventListener("touchend",function(){
     isDragging  = false;
-    isDraggingV = false;
+    if(isDraggingV){
+      isDraggingV = false;
+      positionVLine(currentDate);
+    }
   });
 
   /* ================================================================
