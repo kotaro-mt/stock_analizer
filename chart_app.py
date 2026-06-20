@@ -2759,7 +2759,7 @@ def main() -> None:
             y0=tl["y0"],
             x1=tl["x1"],
             y1=tl["y1"],
-            line=dict(color="#d65a31", width=4.0, dash="solid"),
+            line=dict(color="#d65a31", width=5.0, dash="solid"),
             editable=True,
             layer="above",
             row=1, col=1,
@@ -2768,7 +2768,7 @@ def main() -> None:
     # Configure the default style for new user-drawn trendlines
     fig.update_layout(
         newshape=dict(
-            line=dict(color="#d65a31", width=4.0, dash="solid")
+            line=dict(color="#d65a31", width=5.0, dash="solid")
         )
     )
 
