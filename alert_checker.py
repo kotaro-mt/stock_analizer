@@ -15,6 +15,7 @@ import json
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -467,12 +468,126 @@ def remove_fired_price_alerts(
 
 
 # ---------------------------------------------------------------------------
+# Date Alert checker
+# ---------------------------------------------------------------------------
+_JST = timezone(timedelta(hours=9))
+
+
+class DateAlertChecker(AlertChecker):
+    """Fires when today's date (JST) matches a date_alert entry in config.
+
+    Each ticker can have a ``date_alerts`` list in the config:
+
+    .. code-block:: json
+
+        "date_alerts": [
+            {"date": "2026-07-30", "label": "決算発表日"}
+        ]
+
+    When the alert fires on the matching day it is removed from the config
+    by ``remove_fired_date_alerts`` (called by ``run_notification.py``).
+    """
+
+    checker_type = "date_alert"
+
+    def check(
+        self,
+        ticker: str,
+        name: str,
+        config: dict[str, Any],
+        state: dict[str, Any],
+    ) -> list[Alert]:
+        today = datetime.now(tz=_JST).date().isoformat()  # e.g. "2026-07-30"
+        alerts: list[Alert] = []
+        for da in config.get("date_alerts", []):
+            da_date = da.get("date", "")
+            if da_date != today:
+                continue
+            label = da.get("label") or da_date
+            alerts.append(
+                Alert(
+                    alert_type="date_alert",
+                    ticker=ticker,
+                    name=name,
+                    message=(
+                        f"📅 {name}({ticker}) — {label} [{da_date}]"
+                    ),
+                    details={"date": da_date, "label": label},
+                )
+            )
+        return alerts
+
+
+# ---------------------------------------------------------------------------
+# Remove fired date alerts from config (called after sending)
+# ---------------------------------------------------------------------------
+def remove_fired_date_alerts(
+    fired_alerts: list[Alert],
+    config_path: Path,
+) -> None:
+    """Remove date alerts that have been sent from ``notification_config.json``.
+
+    Parameters
+    ----------
+    fired_alerts : list[Alert]
+        Alerts that were successfully fired.  Only entries with
+        ``alert_type == "date_alert"`` are processed.
+    config_path : Path
+        Path to ``notification_config.json``.
+    """
+    date_alerts = [a for a in fired_alerts if a.alert_type == "date_alert"]
+    if not date_alerts:
+        return
+
+    if not config_path.exists():
+        logger.warning(
+            "Config file not found at %s — cannot remove fired date alerts",
+            config_path,
+        )
+        return
+
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    tickers_cfg = config.get("tickers", {})
+
+    modified = False
+    for alert in date_alerts:
+        d = alert.details
+        ticker = alert.ticker
+        fired_date = d.get("date")
+        if fired_date is None:
+            continue
+
+        ticker_entry = tickers_cfg.get(ticker)
+        if ticker_entry is None:
+            continue
+
+        da_list: list[dict] = ticker_entry.get("date_alerts", [])
+        for i, da in enumerate(da_list):
+            if da.get("date") == fired_date:
+                da_list.pop(i)
+                modified = True
+                logger.info(
+                    "Removed fired date alert: %s %s (%s)",
+                    ticker, fired_date, d.get("label", ""),
+                )
+                break
+
+    if modified:
+        config_path.write_text(
+            json.dumps(config, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        logger.info("Updated config saved to %s", config_path)
+
+
+# ---------------------------------------------------------------------------
 # Registry — add new checkers here
 # ---------------------------------------------------------------------------
 ALL_CHECKERS: dict[str, type[AlertChecker]] = {
     WeeklyMACDCrossChecker.checker_type: WeeklyMACDCrossChecker,
     DailyMACDCrossChecker.checker_type: DailyMACDCrossChecker,
     PriceAlertChecker.checker_type: PriceAlertChecker,
+    DateAlertChecker.checker_type: DateAlertChecker,
 }
 
 

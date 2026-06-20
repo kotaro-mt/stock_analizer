@@ -37,7 +37,7 @@ import os
 
 load_dotenv(ROOT / ".env")
 
-from alert_checker import ALL_CHECKERS, Alert, get_weekly_macd_status, remove_fired_price_alerts
+from alert_checker import ALL_CHECKERS, Alert, get_weekly_macd_status, remove_fired_price_alerts, remove_fired_date_alerts
 from notifier import DiscordNotifier
 
 # Paths
@@ -365,6 +365,18 @@ def main() -> None:
                 current_price=d["current_price"],
                 direction=d["direction"],
             )
+        elif alert.alert_type == "date_alert":
+            d = alert.details
+            label = d.get("label", d.get("date", ""))
+            da_date = d.get("date", "")
+            ok = notifier.send_embed(
+                title=f"📅 日付アラート — {alert.name}",
+                description=(
+                    f"**{alert.name}** ({alert.ticker})\n"
+                    f"**{label}** [{da_date}]"
+                ),
+                color=0x2E6B47,
+            )
         else:
             logger.warning("Unknown alert type: %s - skipping", alert.alert_type)
             continue
@@ -377,9 +389,10 @@ def main() -> None:
             logger.error("Failed to send: %s", alert.message)
             errors += 1
 
-    # ── Auto-remove fired price alerts from config ───────────────────
+    # ── Auto-remove fired price alerts from config ─────────────────────────
     if sent_alerts and not args.dry_run:
         remove_fired_price_alerts(sent_alerts, CONFIG_PATH)
+        remove_fired_date_alerts(sent_alerts, CONFIG_PATH)
 
     # ── Save state ───────────────────────────────────────────────────
     if args.session != "test":

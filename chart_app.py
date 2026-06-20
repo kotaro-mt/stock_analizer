@@ -2733,6 +2733,23 @@ def main() -> None:
             row=1, col=1,
         )
 
+    # Show existing date alerts as vertical lines on the Plotly fig
+    date_alerts = ticker_cfg.setdefault("date_alerts", [])
+    for da in date_alerts:
+        da_date = da.get("date", "")
+        da_label = da.get("label") or da_date
+        if da_date:
+            fig.add_vline(
+                x=da_date,
+                line_color="#2E6B47",
+                line_width=1.5,
+                line_dash="dash",
+                annotation_text=f"📅 {da_label}",
+                annotation_position="top right",
+                annotation_font_color="#2E6B47",
+                annotation_font_size=10,
+            )
+
     # ---- Render chart via custom component (zero-rerun draggable line) ----
     # Track processed alert IDs to prevent duplicate registration
     _processed_ids = st.session_state.setdefault("_processed_alert_ids", set())
@@ -2750,17 +2767,30 @@ def main() -> None:
         alert_id = chart_result.get("_id", "")
         if alert_id and alert_id not in _processed_ids:
             _processed_ids.add(alert_id)
-            new_price = float(chart_result["price"])
-            new_dir = chart_result["direction"]
-            price_alerts.append({
-                "price": new_price,
-                "direction": new_dir,
-            })
-            ticker_cfg["price_alert"] = True
-            save_config(noti_config)
-            dir_lbl = "上抜け" if new_dir == "above" else "下抜け"
-            st.toast(f"✅ 価格アラート {new_price:,.0f}円（{dir_lbl}）を登録しました")
-            st.rerun()
+            if "price" in chart_result:
+                # ---- Price alert from horizontal drag ----
+                new_price = float(chart_result["price"])
+                new_dir = chart_result["direction"]
+                price_alerts.append({
+                    "price": new_price,
+                    "direction": new_dir,
+                })
+                ticker_cfg["price_alert"] = True
+                save_config(noti_config)
+                dir_lbl = "上抜け" if new_dir == "above" else "下抜け"
+                st.toast(f"✅ 価格アラート {new_price:,.0f}円（{dir_lbl}）を登録しました")
+                st.rerun()
+            elif "date" in chart_result:
+                # ---- Date alert from vertical drag ----
+                new_date = chart_result["date"]
+                new_label = chart_result.get("label") or new_date
+                date_alerts.append({
+                    "date": new_date,
+                    "label": new_label,
+                })
+                save_config(noti_config)
+                st.toast(f"✅ 日付アラート {new_date}（{new_label}）を登録しました")
+                st.rerun()
 
     # ---- Price Alert settings panel (below chart) --------------------------
     with st.expander("🔔 価格アラートの設定", expanded=False):
@@ -2809,6 +2839,48 @@ def main() -> None:
                     save_config(noti_config)
                     st.toast("価格しきい値条件を削除しました。")
                     st.rerun()
+
+    # ----- Date Alert settings panel (below chart) --------------------------
+    with st.expander("📅 日付アラートの設定", expanded=False):
+        st.caption("チャート上の📅ボタンから縦線を引いて登録するか、直接日付を入力して追加できます:")
+        import datetime as _dt
+        with st.form(key=f"date_alert_form_{ticker}"):
+            col_d1, col_d2 = st.columns([5, 5])
+            with col_d1:
+                alert_date_input = st.date_input(
+                    "通知日付",
+                    value=_dt.date.today() + _dt.timedelta(days=7),
+                    key=f"date_input_{ticker}",
+                )
+            with col_d2:
+                alert_label_input = st.text_input(
+                    "ラベル（任意）",
+                    placeholder="例: 決算発表日",
+                    key=f"label_input_{ticker}",
+                )
+            submit_date_btn = st.form_submit_button("➕ 日付アラート追加", use_container_width=True)
+            if submit_date_btn:
+                date_alerts.append({
+                    "date": str(alert_date_input),
+                    "label": alert_label_input.strip() or str(alert_date_input),
+                })
+                save_config(noti_config)
+                st.toast(f"📅 日付アラート ({alert_date_input}) を追加しました。")
+                st.rerun()
+
+        if date_alerts:
+            st.markdown("**現在設定されている日付アラート一覧:**")
+            for idx, da in enumerate(date_alerts):
+                col_d1, col_d2, col_d3 = st.columns([4, 4, 2])
+                col_d1.write(f"日付: `{da['date']}`")
+                col_d2.write(f"ラベル: `{da.get('label', da['date'])}`")
+                if col_d3.button("🗑️ 削除", key=f"del_da_{ticker}_{idx}"):
+                    date_alerts.pop(idx)
+                    save_config(noti_config)
+                    st.toast("日付アラートを削除しました。")
+                    st.rerun()
+        else:
+            st.info("日付アラートはまだ設定されていません。")
 
     # ----- Earnings details table (J-Quants V2 summary data) ---------------
     from jquants import cleaned_summary

@@ -17,17 +17,21 @@ body{
 #toolbar{
   position:absolute;top:6px;left:50%;transform:translateX(-50%);
   z-index:1000;display:flex;align-items:center;gap:6px;
-  background:rgba(251,248,239,.95); /* matching --surface */
+  background:rgba(251,248,239,.95);
   backdrop-filter:blur(8px);
-  border:1.5px solid #14110E; /* matching --ink */
-  border-radius:0px; /* square block theme */
+  border:1.5px solid #14110E;
+  border-radius:0px;
   padding:6px 12px;
-  box-shadow:3px 3px 0 #14110E; /* stamped ink block shadow */
+  box-shadow:3px 3px 0 #14110E;
   transition:all .2s;
 }
-#toolbar.active{
-  border-color:#B7362E; /* matching --shu */
+#toolbar.active-price{
+  border-color:#B7362E;
   box-shadow:3px 3px 0 #B7362E;
+}
+#toolbar.active-date{
+  border-color:#2E6B47;
+  box-shadow:3px 3px 0 #2E6B47;
 }
 
 .tb-btn{
@@ -57,15 +61,40 @@ body{
 #cancel-btn{background:#B7362E;color:#ffffff;border-color:#14110E;display:none}
 #cancel-btn:hover{background:#8A231C}
 
-/* ---- draggable horizontal line (HTML overlay, NOT a Plotly shape) ---- */
+/* ---- toolbar separator ---- */
+.tb-sep{width:1px;height:20px;background:#14110E;opacity:0.25;margin:0 2px}
+
+/* ---- date alert controls ---- */
+#date-toggle-btn{background:#F4EFE3;color:#14110E}
+#date-toggle-btn:hover{background:#ECE5D3}
+#date-toggle-btn.active{background:#2E6B47;color:#F4EFE3;border-color:#2E6B47}
+
+#date-badge{
+  color:#2E6B47;font-weight:700;font-size:13px;
+  font-family:'IBM Plex Mono',monospace;
+  font-variant-numeric:tabular-nums;
+  min-width:100px;text-align:center;display:none;
+}
+#label-input{
+  padding:4px 8px;border:1.5px solid #14110E;border-radius:0px;
+  background:#F4EFE3;color:#14110E;
+  font-family:'IBM Plex Sans JP','Hiragino Sans',sans-serif;
+  font-size:12px;display:none;width:130px;outline:none;
+}
+#label-input:focus{border-color:#2E6B47}
+#date-register-btn{background:#2E6B47;color:#ffffff;border-color:#14110E;display:none}
+#date-register-btn:hover{background:#245437}
+#date-cancel-btn{background:#B7362E;color:#ffffff;border-color:#14110E;display:none}
+#date-cancel-btn:hover{background:#8A231C}
+
+/* ---- draggable horizontal price line ---- */
 #drag-line{
   position:absolute;left:0;right:0;height:0;
-  border-top:2px dashed #B7362E; /* --shu red dashed line */
+  border-top:2px dashed #B7362E;
   z-index:500;display:none;
   pointer-events:auto;cursor:ns-resize;
   filter:drop-shadow(0 0 2px rgba(183,54,46,.3));
 }
-/* wider invisible hit-area for easier grabbing */
 #drag-line::before{
   content:'';position:absolute;
   top:-10px;left:0;right:0;height:22px;
@@ -73,12 +102,36 @@ body{
 }
 #drag-line-label{
   position:absolute;right:4px;top:-11px;
-  background:#B7362E;color:#F4EFE3; /* --shu red background, --paper text */
+  background:#B7362E;color:#F4EFE3;
   border:1px solid #14110E;
-  padding:2px 8px;border-radius:0px; /* square stamp */
+  padding:2px 8px;border-radius:0px;
   font-size:11px;font-weight:700;
   font-family:'IBM Plex Mono',monospace;
   white-space:nowrap;font-variant-numeric:tabular-nums;
+  pointer-events:none;
+}
+
+/* ---- draggable vertical date line ---- */
+#drag-vline{
+  position:absolute;width:0;
+  border-left:2px dashed #2E6B47;
+  z-index:500;display:none;
+  pointer-events:auto;cursor:ew-resize;
+  filter:drop-shadow(0 0 2px rgba(46,107,71,.3));
+}
+#drag-vline::before{
+  content:'';position:absolute;
+  left:-10px;top:0;bottom:0;width:22px;
+  cursor:ew-resize;
+}
+#drag-vline-label{
+  position:absolute;left:4px;top:4px;
+  background:#2E6B47;color:#F4EFE3;
+  border:1px solid #14110E;
+  padding:2px 8px;border-radius:0px;
+  font-size:11px;font-weight:700;
+  font-family:'IBM Plex Mono',monospace;
+  white-space:nowrap;
   pointer-events:none;
 }
 
@@ -86,7 +139,7 @@ body{
 #loading{
   position:absolute;top:0;left:0;right:0;bottom:0;
   display:flex;align-items:center;justify-content:center;
-  background:rgba(244,239,227,.8);z-index:2000; /* matching --paper with opacity */
+  background:rgba(244,239,227,.8);z-index:2000;
   color:#14110E;font-size:14px;
 }
 #loading.hidden{display:none}
@@ -96,6 +149,7 @@ body{
 <div id="wrapper">
 
   <div id="toolbar">
+    <!-- Price alert controls -->
     <button id="toggle-btn" class="tb-btn">📏 アラートラインを設定</button>
     <span id="price-badge"></span>
     <select id="direction-sel">
@@ -104,17 +158,31 @@ body{
     </select>
     <button id="register-btn" class="tb-btn">✅ 登録</button>
     <button id="cancel-btn" class="tb-btn">✖</button>
+
+    <!-- Separator -->
+    <div class="tb-sep"></div>
+
+    <!-- Date alert controls -->
+    <button id="date-toggle-btn" class="tb-btn">📅 日付アラートを設定</button>
+    <span id="date-badge"></span>
+    <input id="label-input" type="text" placeholder="ラベル（例: 決算発表）">
+    <button id="date-register-btn" class="tb-btn">✅ 登録</button>
+    <button id="date-cancel-btn" class="tb-btn">✖</button>
   </div>
 
   <div id="drag-line">
     <div id="drag-line-label"></div>
   </div>
 
+  <div id="drag-vline">
+    <div id="drag-vline-label"></div>
+  </div>
+
   <div id="plotly-chart"></div>
   <div id="loading">チャート読込中…</div>
 </div>
 
-<!-- Plotly.js from CDN (cached by browser after first load) -->
+<!-- Plotly.js from CDN -->
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <script>
 (function(){
@@ -133,89 +201,69 @@ body{
   /* ================================================================
      DOM refs
      ================================================================ */
-  var chartEl    = document.getElementById("plotly-chart");
-  var dragLine   = document.getElementById("drag-line");
-  var dragLabel  = document.getElementById("drag-line-label");
-  var toolbar    = document.getElementById("toolbar");
-  var toggleBtn  = document.getElementById("toggle-btn");
-  var badge      = document.getElementById("price-badge");
-  var dirSel     = document.getElementById("direction-sel");
-  var regBtn     = document.getElementById("register-btn");
-  var cancelBtn  = document.getElementById("cancel-btn");
-  var loadingEl  = document.getElementById("loading");
+  var chartEl       = document.getElementById("plotly-chart");
+  var dragLine      = document.getElementById("drag-line");
+  var dragLabel     = document.getElementById("drag-line-label");
+  var dragVLine     = document.getElementById("drag-vline");
+  var dragVLabel    = document.getElementById("drag-vline-label");
+  var toolbar       = document.getElementById("toolbar");
+  var toggleBtn     = document.getElementById("toggle-btn");
+  var badge         = document.getElementById("price-badge");
+  var dirSel        = document.getElementById("direction-sel");
+  var regBtn        = document.getElementById("register-btn");
+  var cancelBtn     = document.getElementById("cancel-btn");
+  var dateToggleBtn = document.getElementById("date-toggle-btn");
+  var dateBadge     = document.getElementById("date-badge");
+  var labelInput    = document.getElementById("label-input");
+  var dateRegBtn    = document.getElementById("date-register-btn");
+  var dateCancelBtn = document.getElementById("date-cancel-btn");
+  var loadingEl     = document.getElementById("loading");
 
   /* ================================================================
      State
      ================================================================ */
   var hasPlotted    = false;
   var lineVisible   = false;
+  var vlineVisible  = false;
   var isDragging    = false;
+  var isDraggingV   = false;
   var currentPrice  = 0;
   var lastClose     = 0;
+  var currentDate   = "";
 
-  // drag bookkeeping
   var dragStartMouseY = 0;
   var dragStartTop    = 0;
+  var dragStartMouseX = 0;
+  var dragStartLeft   = 0;
 
   /* ================================================================
-     UI helpers
+     Y-axis helpers (price line)
      ================================================================ */
-  function showControls(show){
-    var d = show ? "inline-block" : "none";
-    badge.style.display      = d;
-    dirSel.style.display     = d;
-    regBtn.style.display     = d;
-    cancelBtn.style.display  = d;
-    dragLine.style.display   = show ? "block" : "none";
-    toolbar.classList.toggle("active",show);
-    toggleBtn.classList.toggle("active",show);
-    toggleBtn.textContent = show ? "✏️ ドラッグで移動" : "📏 アラートラインを設定";
-  }
-
-  function updatePriceDisplay(){
-    var txt = currentPrice.toLocaleString() + "円";
-    badge.textContent   = "💰 " + txt;
-    dragLabel.textContent = txt;
-    dirSel.value = currentPrice >= lastClose ? "above" : "below";
-  }
-
-  /* ---- Y-axis pixel boundaries (accounts for subplot domain) ----
-   * The chart may have subplots (volume, MACD). The price y-axis
-   * only occupies a fraction of the total plot height, defined by
-   * yaxis.domain = [bottomFrac, topFrac].  All pixel conversions
-   * MUST use these bounds, not the full _size.h.
-   */
   function getAxisBounds(){
-    var ya = chartEl._fullLayout.yaxis;
-    var ps = chartEl._fullLayout._size;
+    var ya  = chartEl._fullLayout.yaxis;
+    var ps  = chartEl._fullLayout._size;
     var dom = ya.domain || [0,1];
-    // Plotly domain: 0 = bottom of plot area, 1 = top of plot area
-    // Pixel y:  ps.t = top edge,  ps.t + ps.h = bottom edge
-    var topPx  = ps.t + ps.h * (1 - dom[1]);  // pixel-y of axis TOP
-    var botPx  = ps.t + ps.h * (1 - dom[0]);  // pixel-y of axis BOTTOM
+    var topPx = ps.t + ps.h * (1 - dom[1]);
+    var botPx = ps.t + ps.h * (1 - dom[0]);
     return {topPx:topPx, botPx:botPx, hPx:botPx-topPx, ya:ya, ps:ps};
   }
 
-  /* Convert data-Y → pixel-Y (relative to #plotly-chart top) */
   function dataYtoPixel(dataY){
-    var b = getAxisBounds();
+    var b    = getAxisBounds();
     var frac = (dataY - b.ya.range[0]) / (b.ya.range[1] - b.ya.range[0]);
     return b.botPx - frac * b.hPx;
   }
 
-  /* Convert pixel-Y → data-Y */
   function pixelToDataY(pixY){
-    var b = getAxisBounds();
+    var b    = getAxisBounds();
     var frac = (b.botPx - pixY) / b.hPx;
     return b.ya.range[0] + frac * (b.ya.range[1] - b.ya.range[0]);
   }
 
-  /* Position the overlay line at a data-Y price */
   function positionLine(dataY){
     if(!chartEl._fullLayout) return;
-    var b = getAxisBounds();
+    var b   = getAxisBounds();
     var pxY = dataYtoPixel(dataY);
-    // clamp to price-subplot area only
     pxY = Math.max(b.topPx, Math.min(b.botPx, pxY));
     dragLine.style.top   = pxY + "px";
     dragLine.style.left  = b.ps.l + "px";
@@ -224,81 +272,241 @@ body{
   }
 
   /* ================================================================
-     Toggle button — show / hide the draggable line
+     X-axis helpers (date line)
+     ================================================================ */
+  function getXAxisBounds(){
+    var xa  = chartEl._fullLayout.xaxis;
+    var ps  = chartEl._fullLayout._size;
+    var dom = xa.domain || [0,1];
+    var leftPx  = ps.l + ps.w * dom[0];
+    var rightPx = ps.l + ps.w * dom[1];
+    return {leftPx:leftPx, rightPx:rightPx, wPx:rightPx-leftPx, xa:xa, ps:ps};
+  }
+
+  function _isoDateFromMs(ms){
+    var d = new Date(ms);
+    var y = d.getFullYear();
+    var m = String(d.getMonth()+1).padStart(2,"0");
+    var day = String(d.getDate()).padStart(2,"0");
+    return y+"-"+m+"-"+day;
+  }
+
+  function pixelToDate(pixX){
+    var b    = getXAxisBounds();
+    var frac = (pixX - b.leftPx) / b.wPx;
+    frac = Math.max(0, Math.min(1, frac));
+    var t0 = new Date(b.xa.range[0]).getTime();
+    var t1 = new Date(b.xa.range[1]).getTime();
+    return _isoDateFromMs(t0 + frac * (t1 - t0));
+  }
+
+  function dateToPx(dateStr){
+    var b   = getXAxisBounds();
+    var t   = new Date(dateStr).getTime();
+    var t0  = new Date(b.xa.range[0]).getTime();
+    var t1  = new Date(b.xa.range[1]).getTime();
+    var frac = (t - t0) / (t1 - t0);
+    frac = Math.max(0, Math.min(1, frac));
+    return b.leftPx + frac * b.wPx;
+  }
+
+  function positionVLine(dateStr){
+    if(!chartEl._fullLayout) return;
+    var b   = getXAxisBounds();
+    var pxX = dateToPx(dateStr);
+    pxX = Math.max(b.leftPx, Math.min(b.rightPx, pxX));
+    var ps  = chartEl._fullLayout._size;
+    dragVLine.style.left   = pxX + "px";
+    dragVLine.style.top    = ps.t + "px";
+    dragVLine.style.height = ps.h + "px";
+    dragVLine.style.right  = "auto";
+  }
+
+  /* ================================================================
+     Price line UI helpers
+     ================================================================ */
+  function showPriceControls(show){
+    var d = show ? "inline-block" : "none";
+    badge.style.display     = d;
+    dirSel.style.display    = d;
+    regBtn.style.display    = d;
+    cancelBtn.style.display = d;
+    dragLine.style.display  = show ? "block" : "none";
+    toolbar.classList.remove("active-price","active-date");
+    if(show) toolbar.classList.add("active-price");
+    toggleBtn.classList.toggle("active", show);
+    toggleBtn.textContent = show ? "✏️ ドラッグで移動" : "📏 アラートラインを設定";
+  }
+
+  function updatePriceDisplay(){
+    var txt = currentPrice.toLocaleString() + "円";
+    badge.textContent     = "💰 " + txt;
+    dragLabel.textContent = txt;
+    dirSel.value = currentPrice >= lastClose ? "above" : "below";
+  }
+
+  /* ================================================================
+     Date line UI helpers
+     ================================================================ */
+  function showDateControls(show){
+    var d = show ? "inline-block" : "none";
+    dateBadge.style.display    = d;
+    labelInput.style.display   = d;
+    dateRegBtn.style.display   = d;
+    dateCancelBtn.style.display = d;
+    dragVLine.style.display    = show ? "block" : "none";
+    toolbar.classList.remove("active-price","active-date");
+    if(show) toolbar.classList.add("active-date");
+    dateToggleBtn.classList.toggle("active", show);
+    dateToggleBtn.textContent = show ? "✏️ ドラッグで移動" : "📅 日付アラートを設定";
+  }
+
+  function updateDateDisplay(){
+    dateBadge.textContent    = "📅 " + currentDate;
+    dragVLabel.textContent   = currentDate;
+  }
+
+  /* ================================================================
+     Price toggle button
      ================================================================ */
   toggleBtn.addEventListener("click",function(){
     if(!lineVisible){
+      // Deactivate date mode first
+      if(vlineVisible){ vlineVisible=false; showDateControls(false); }
       lineVisible = true;
-      showControls(true);
-      // Place line at current close price
+      showPriceControls(true);
       currentPrice = Math.round(lastClose);
       positionLine(currentPrice);
       updatePriceDisplay();
     } else {
       lineVisible = false;
-      showControls(false);
+      showPriceControls(false);
     }
   });
 
   /* ================================================================
-     Register / Cancel
+     Date toggle button
+     ================================================================ */
+  dateToggleBtn.addEventListener("click",function(){
+    if(!vlineVisible){
+      // Deactivate price mode first
+      if(lineVisible){ lineVisible=false; showPriceControls(false); }
+      vlineVisible = true;
+      showDateControls(true);
+      labelInput.value = "";
+      // Place vline at mid of current x-axis view
+      if(chartEl._fullLayout){
+        var b  = getXAxisBounds();
+        var t0 = new Date(b.xa.range[0]).getTime();
+        var t1 = new Date(b.xa.range[1]).getTime();
+        currentDate = _isoDateFromMs((t0+t1)/2);
+        positionVLine(currentDate);
+        updateDateDisplay();
+      }
+    } else {
+      vlineVisible = false;
+      showDateControls(false);
+    }
+  });
+
+  /* ================================================================
+     Price Register / Cancel
      ================================================================ */
   regBtn.addEventListener("click",function(){
-    setComponentValue({
-      price: currentPrice,
-      direction: dirSel.value,
-      _id: "alert_" + Date.now()
-    });
+    setComponentValue({price:currentPrice, direction:dirSel.value, _id:"alert_"+Date.now()});
     lineVisible = false;
-    showControls(false);
+    showPriceControls(false);
   });
 
   cancelBtn.addEventListener("click",function(){
     lineVisible = false;
-    showControls(false);
+    showPriceControls(false);
   });
 
   /* ================================================================
-     Drag handling — all in HTML, zero Plotly / Streamlit calls
+     Date Register / Cancel
      ================================================================ */
-  // mousedown on the drag line element
+  dateRegBtn.addEventListener("click",function(){
+    var lbl = labelInput.value.trim() || currentDate;
+    setComponentValue({date:currentDate, label:lbl, _id:"date_"+Date.now()});
+    vlineVisible = false;
+    showDateControls(false);
+  });
+
+  dateCancelBtn.addEventListener("click",function(){
+    vlineVisible = false;
+    showDateControls(false);
+  });
+
+  /* ================================================================
+     Price line drag — mouse
+     ================================================================ */
   dragLine.addEventListener("mousedown",function(e){
     isDragging = true;
     dragStartMouseY = e.clientY;
     dragStartTop    = parseFloat(dragLine.style.top) || 0;
     e.preventDefault();
     e.stopPropagation();
-    document.body.style.cursor = "ns-resize";
+    document.body.style.cursor     = "ns-resize";
     document.body.style.userSelect = "none";
   });
 
-  // mousemove anywhere in the document
-  document.addEventListener("mousemove",function(e){
-    if(!isDragging) return;
-    var dy     = e.clientY - dragStartMouseY;
-    var newTop = dragStartTop + dy;
-
-    // clamp to price-subplot area
-    var b = getAxisBounds();
-    newTop = Math.max(b.topPx, Math.min(b.botPx, newTop));
-
-    dragLine.style.top = newTop + "px";
-
-    // convert pixel → data-Y
-    currentPrice = Math.round(pixelToDataY(newTop));
-    updatePriceDisplay();
+  /* ================================================================
+     Date line drag — mouse
+     ================================================================ */
+  dragVLine.addEventListener("mousedown",function(e){
+    isDraggingV = true;
+    dragStartMouseX = e.clientX;
+    dragStartLeft   = parseFloat(dragVLine.style.left) || 0;
+    e.preventDefault();
+    e.stopPropagation();
+    document.body.style.cursor     = "ew-resize";
+    document.body.style.userSelect = "none";
   });
 
-  // mouseup
+  /* ================================================================
+     Combined mousemove
+     ================================================================ */
+  document.addEventListener("mousemove",function(e){
+    if(isDragging){
+      var dy     = e.clientY - dragStartMouseY;
+      var newTop = dragStartTop + dy;
+      var b      = getAxisBounds();
+      newTop = Math.max(b.topPx, Math.min(b.botPx, newTop));
+      dragLine.style.top = newTop + "px";
+      currentPrice = Math.round(pixelToDataY(newTop));
+      updatePriceDisplay();
+    }
+    if(isDraggingV){
+      var dx      = e.clientX - dragStartMouseX;
+      var newLeft = dragStartLeft + dx;
+      var bx      = getXAxisBounds();
+      newLeft = Math.max(bx.leftPx, Math.min(bx.rightPx, newLeft));
+      dragVLine.style.left = newLeft + "px";
+      currentDate = pixelToDate(newLeft);
+      updateDateDisplay();
+    }
+  });
+
+  /* ================================================================
+     Combined mouseup
+     ================================================================ */
   document.addEventListener("mouseup",function(){
     if(isDragging){
       isDragging = false;
-      document.body.style.cursor = "";
+      document.body.style.cursor     = "";
+      document.body.style.userSelect = "";
+    }
+    if(isDraggingV){
+      isDraggingV = false;
+      document.body.style.cursor     = "";
       document.body.style.userSelect = "";
     }
   });
 
-  /* ---- touch events for mobile ---- */
+  /* ================================================================
+     Price line touch events
+     ================================================================ */
   dragLine.addEventListener("touchstart",function(e){
     isDragging = true;
     dragStartMouseY = e.touches[0].clientY;
@@ -306,28 +514,48 @@ body{
     e.preventDefault();
   },{passive:false});
 
+  /* ================================================================
+     Date line touch events
+     ================================================================ */
+  dragVLine.addEventListener("touchstart",function(e){
+    isDraggingV = true;
+    dragStartMouseX = e.touches[0].clientX;
+    dragStartLeft   = parseFloat(dragVLine.style.left) || 0;
+    e.preventDefault();
+  },{passive:false});
+
   document.addEventListener("touchmove",function(e){
-    if(!isDragging) return;
-    var dy     = e.touches[0].clientY - dragStartMouseY;
-    var newTop = dragStartTop + dy;
-    var b = getAxisBounds();
-    newTop = Math.max(b.topPx, Math.min(b.botPx, newTop));
-    dragLine.style.top = newTop + "px";
-    currentPrice = Math.round(pixelToDataY(newTop));
-    updatePriceDisplay();
+    if(isDragging){
+      var dy     = e.touches[0].clientY - dragStartMouseY;
+      var newTop = dragStartTop + dy;
+      var b      = getAxisBounds();
+      newTop = Math.max(b.topPx, Math.min(b.botPx, newTop));
+      dragLine.style.top = newTop + "px";
+      currentPrice = Math.round(pixelToDataY(newTop));
+      updatePriceDisplay();
+    }
+    if(isDraggingV){
+      var dx      = e.touches[0].clientX - dragStartMouseX;
+      var newLeft = dragStartLeft + dx;
+      var bx      = getXAxisBounds();
+      newLeft = Math.max(bx.leftPx, Math.min(bx.rightPx, newLeft));
+      dragVLine.style.left = newLeft + "px";
+      currentDate = pixelToDate(newLeft);
+      updateDateDisplay();
+    }
   },{passive:true});
 
   document.addEventListener("touchend",function(){
-    isDragging = false;
+    isDragging  = false;
+    isDraggingV = false;
   });
 
   /* ================================================================
-     Chart zoom/scroll → reposition overlay line
+     Chart zoom/scroll → reposition overlay lines
      ================================================================ */
   function onChartRelayout(){
-    if(lineVisible && !isDragging){
-      positionLine(currentPrice);
-    }
+    if(lineVisible  && !isDragging)  positionLine(currentPrice);
+    if(vlineVisible && !isDraggingV) positionVLine(currentDate);
   }
 
   /* ================================================================
@@ -338,9 +566,10 @@ body{
     var height = args.component_height || 700;
     lastClose  = args.current_price || 0;
 
-    // reset line state on re-render (after registration triggered a rerun)
-    lineVisible = false;
-    showControls(false);
+    lineVisible  = false;
+    vlineVisible = false;
+    showPriceControls(false);
+    showDateControls(false);
 
     chartEl.style.height = height + "px";
 
@@ -372,7 +601,6 @@ body{
     }
   });
 
-  // Signal readiness
   sendMsg("streamlit:componentReady",{apiVersion:1});
 
 })();
