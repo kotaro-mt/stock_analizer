@@ -2779,6 +2779,7 @@ def main() -> None:
 
     # Debug logging to trace shapes and result
     try:
+        from datetime import datetime
         shapes_info = []
         if hasattr(fig.layout, "shapes") and fig.layout.shapes:
             for s in fig.layout.shapes:
@@ -2797,7 +2798,8 @@ def main() -> None:
             debug_f.write(f"fig.layout.shapes: {shapes_info}\n")
             debug_f.write(f"chart_result: {chart_result}\n")
     except Exception as e:
-        pass
+        with open(r"c:\Users\matsu\OneDrive\claude\stock_future\debug_trendlines.txt", "a", encoding="utf-8") as debug_f:
+            debug_f.write(f"Logging error: {str(e)}\n")
 
     chart_result = price_line_chart(
         fig,
