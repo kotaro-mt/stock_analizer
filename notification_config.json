@@ -39,7 +39,8 @@
       "price_alert": false,
       "date_alerts": [],
       "trendlines": [],
-      "trendline_alert": true
+      "trendline_alert": true,
+      "notifications_enabled": false
     },
     "5253.T": {
       "weekly_macd_cross": true,
