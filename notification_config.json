@@ -48,7 +48,12 @@
     "7203.T": {
       "price_alerts": [],
       "price_alert": false,
-      "date_alerts": [],
+      "date_alerts": [
+        {
+          "date": "2026-09-15",
+          "label": "2026-09-15"
+        }
+      ],
       "trendlines": [
         {
           "x0": "2026-03-02",
