@@ -69,23 +69,27 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Check if there are changes in notification configuration files
+
+          # Check status
           git status --porcelain
-          
-          # Stage configuration files if they exist
-          for file in notification_config.json notification_state.json artifacts/favorites.json; do
+
+          # Only stage notification_state.json (runtime dedup state).
+          # notification_config.json is managed exclusively via the Streamlit UI
+          # and must NOT be committed here — doing so would overwrite user-configured
+          # notification modes (alerts_only / off / all) with whatever the runner
+          # checked out at job start, discarding any local changes pushed afterward.
+          for file in notification_state.json artifacts/favorites.json; do
             if [ -f "$file" ]; then
               git add "$file"
             fi
           done
-          
+
           # Only commit and push if there are changes staged
           if ! git diff --quiet --cached; then
-            git commit -m "Update notification configuration and state [skip ci]"
+            git commit -m "Update notification state [skip ci]"
             # Pull latest changes using rebase to prevent non-fast-forward conflict
             git pull --rebase origin main
             git push origin main
           else
-            echo "No config changes to commit."
+            echo "No state changes to commit."
           fi
