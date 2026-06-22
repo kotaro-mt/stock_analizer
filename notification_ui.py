@@ -8,11 +8,125 @@ import sys
 from pathlib import Path
 import streamlit as st
 from dotenv import load_dotenv
+from git_utils import git_push_changes
 
 # Paths
 ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = ROOT / "notification_config.json"
 FAVORITES_PATH = ROOT / "artifacts" / "favorites.json"
+
+NOTIFICATION_CSS = """
+<style>
+.notif-hero {
+    position: relative;
+    overflow: hidden;
+    padding: 30px 34px 28px;
+    margin: 4px 0 22px;
+    border: 1px solid rgba(148, 163, 184, .18);
+    border-radius: 22px;
+    background:
+      radial-gradient(circle at 92% 12%, rgba(56, 189, 248, .15), transparent 34%),
+      linear-gradient(135deg, rgba(15, 23, 42, .98), rgba(15, 23, 42, .88));
+    box-shadow: 0 18px 48px rgba(2, 6, 23, .25);
+}
+.notif-hero::after {
+    content: "◌";
+    position: absolute;
+    right: 28px;
+    top: -34px;
+    font-size: 10rem;
+    line-height: 1;
+    color: rgba(125, 211, 252, .06);
+}
+.notif-eyebrow {
+    color: #7dd3fc;
+    font: 700 .68rem/1.2 var(--font-mono, monospace);
+    letter-spacing: .18em;
+    text-transform: uppercase;
+}
+.notif-title {
+    margin: 7px 0 8px;
+    color: #f8fafc;
+    font: 700 clamp(1.8rem, 4vw, 3rem)/1.05 var(--font-display, sans-serif);
+    letter-spacing: -.035em;
+}
+.notif-lead {
+    max-width: 650px;
+    margin: 0;
+    color: #94a3b8;
+    font-size: .88rem;
+    line-height: 1.75;
+}
+.notif-chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.notif-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 11px;
+    border: 1px solid rgba(148, 163, 184, .2);
+    border-radius: 999px;
+    background: rgba(255,255,255,.045);
+    color: #cbd5e1;
+    font: 600 .72rem/1 var(--font-mono, monospace);
+}
+.notif-dot { width: 7px; height: 7px; border-radius: 50%; background: #64748b; }
+.notif-dot.on { background: #34d399; box-shadow: 0 0 0 4px rgba(52,211,153,.12); }
+.notif-dot.warn { background: #fb7185; box-shadow: 0 0 0 4px rgba(251,113,133,.1); }
+.notif-section-head { margin: 30px 0 12px; }
+.notif-section-kicker {
+    color: #64748b;
+    font: 700 .65rem/1 var(--font-mono, monospace);
+    letter-spacing: .16em;
+}
+.notif-section-title {
+    margin-top: 5px;
+    color: var(--ink, #e2e8f0);
+    font: 700 1.08rem/1.3 var(--font-display, sans-serif);
+}
+.notif-section-copy { margin-top: 3px; color: var(--ink-muted, #94a3b8); font-size: .78rem; }
+.notif-stat {
+    min-height: 92px;
+    padding: 17px 18px;
+    border: 1px solid rgba(148,163,184,.16);
+    border-radius: 15px;
+    background: rgba(15,23,42,.38);
+}
+.notif-stat-label { color: #64748b; font: 700 .64rem/1 var(--font-mono, monospace); letter-spacing: .12em; }
+.notif-stat-value { margin-top: 9px; color: var(--ink, #e2e8f0); font-size: 1.05rem; font-weight: 700; }
+.notif-stat-note { margin-top: 4px; color: #64748b; font-size: .68rem; }
+div[data-testid="stExpander"] {
+    margin-bottom: 10px;
+    border: 1px solid rgba(148,163,184,.16) !important;
+    border-radius: 14px !important;
+    background: rgba(15,23,42,.24) !important;
+    overflow: hidden;
+}
+div[data-testid="stExpander"] summary { padding: 12px 15px !important; }
+div[data-testid="stExpander"] summary:hover { background: rgba(125,211,252,.045); }
+div[data-testid="stForm"] {
+    padding: 14px !important;
+    border: 1px solid rgba(148,163,184,.13) !important;
+    border-radius: 12px !important;
+    background: rgba(2,6,23,.16);
+}
+div[data-testid="stTextInput"] input,
+div[data-testid="stNumberInput"] input,
+div[data-testid="stDateInput"] input,
+div[data-testid="stSelectbox"] > div > div {
+    border-radius: 10px !important;
+}
+div[data-testid="stButton"] button, div[data-testid="stFormSubmitButton"] button {
+    border-radius: 10px !important;
+    font-weight: 700 !important;
+}
+.notif-rule { height: 1px; margin: 14px 0; background: rgba(148,163,184,.12); }
+.notif-subhead { margin: 4px 0 10px; color: var(--ink, #e2e8f0); font-size: .78rem; font-weight: 700; letter-spacing: .02em; }
+@media (max-width: 700px) {
+    .notif-hero { padding: 24px 20px; border-radius: 16px; }
+    .notif-hero::after { display: none; }
+}
+</style>
+"""
 
 # Load env for webhook check
 load_dotenv(ROOT / ".env")
@@ -80,25 +194,26 @@ def load_config() -> dict:
         current_on_disk = CONFIG_PATH.read_text(encoding="utf-8") if CONFIG_PATH.exists() else ""
         serialized = json.dumps(config, ensure_ascii=False, indent=2)
         if current_on_disk != serialized:
-            save_config(config)
+            save_config(config, push=False)
     except Exception:
         pass
 
     return config
 
 
-def save_config(config: dict) -> None:
+def save_config(config: dict, *, push: bool = True) -> None:
     """Save config dict to notification_config.json."""
     CONFIG_PATH.parent.mkdir(exist_ok=True)
     CONFIG_PATH.write_text(
         json.dumps(config, ensure_ascii=False, indent=2),
         encoding="utf-8"
     )
-    try:
-        from git_utils import git_push_changes
-        git_push_changes("Update notification config via UI")
-    except Exception:
-        pass
+    if push:
+        if not git_push_changes("Update notification settings via UI"):
+            st.error(
+                "設定は保存されましたが、Git pushに失敗しました。"
+                "ネットワークまたはGit認証を確認してください。"
+            )
 
 
 def load_favorites() -> dict[str, str]:
@@ -124,83 +239,43 @@ def show_notification_ui(name_lookup: dict[str, str]) -> None:
       Section 02 — Detection Defaults: global MACD cross checkboxes
       Section 03 — Per-Ticker Settings: compact grid with inline price alerts
     """
-    st.markdown("## 🔔 自動通知設定")
-    st.markdown(
-        "<div style='font-family: var(--font-display); font-style: italic; "
-        "color: var(--ink-muted); margin-bottom: 1.5rem;'>"
-        "お気に入り銘柄の週足/日足MACDクロス、および設定価格への到達判定を検知し、"
-        "Discordへ自動通知します。"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-
-    # Load configuration
+    st.markdown(NOTIFICATION_CSS, unsafe_allow_html=True)
     config = load_config()
-
-    # ------------------------------------------------------------------ #
-    # Section 01 — Status & Actions (top card)
-    # ------------------------------------------------------------------ #
-    st.markdown(
-        "<div class='kt-section-label'>"
-        "<span class='kt-section-num'>01</span>ステータス & アクション"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-
-    # Webhook status
+    favs = load_favorites()
     webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "")
-    if webhook_url:
-        masked = webhook_url[:30] + "..." if len(webhook_url) > 30 else webhook_url
-        webhook_html = (
-            f"<span style='color: var(--forest);'>✅ 接続中</span>"
-            f"&nbsp;&nbsp;<code style='color: var(--ink-muted); font-size: 0.75rem;'>"
-            f"{masked}</code>"
-        )
-    else:
-        webhook_html = (
-            "<span style='color: var(--shu);'>⚠️ 未設定</span>"
-            "&nbsp;&nbsp;<span style='font-size: 0.75rem; color: var(--ink-muted);'>"
-            "<code>.env</code> に <code>DISCORD_WEBHOOK_URL</code> を追加してください"
-            "</span>"
-        )
-
-    # Top row: toggle + webhook status
-    col_toggle, col_status = st.columns([1, 2])
-    with col_toggle:
-        new_enabled = st.toggle(
-            "通知システム ON / OFF",
-            value=config.get("enabled", True),
-            key="master_toggle",
-        )
-        if new_enabled != config.get("enabled", True):
-            config["enabled"] = new_enabled
-            save_config(config)
-            st.rerun()
-        status_label = (
-            "🟢 **有効** — 定期チェック時（9:05 / 15:35）に通知が実行されます"
-            if new_enabled
-            else "⚫ **無効** — すべての通知送信がスキップされます"
-        )
-        st.markdown(
-            f"<div style='font-size: 0.8rem; margin-top: 4px;'>{status_label}</div>",
-            unsafe_allow_html=True,
-        )
-
-    with col_status:
-        st.markdown(
-            f"<div style='font-size: 0.85rem; margin-top: 6px;'>"
-            f"<strong style='font-family: var(--font-mono); font-size: 0.7rem; "
-            f"letter-spacing: 0.08em;'>WEBHOOK</strong>&nbsp;&nbsp;{webhook_html}"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-
-    # Test buttons — placed directly in the status card for immediate access
+    is_enabled = config.get("enabled", True)
+    ticker_settings = config.get("tickers", {})
+    alert_count = sum(
+        len(cfg.get("price_alerts", []))
+        + len(cfg.get("date_alerts", []))
+        + len(cfg.get("trendlines", []))
+        for cfg in ticker_settings.values()
+    )
+    system_label = "稼働中" if is_enabled else "停止中"
+    connection_label = "Discord 接続済み" if webhook_url else "Webhook 未設定"
+    system_dot = "on" if is_enabled else "warn"
+    connection_dot = "on" if webhook_url else "warn"
     st.markdown(
-        "<div style='margin-top: 12px; padding-top: 10px; "
-        "border-top: 1px dashed var(--border);'></div>",
+        f"""
+        <section class="notif-hero">
+          <div class="notif-eyebrow">Notification Control</div>
+          <div class="notif-title">通知センター</div>
+          <p class="notif-lead">
+            お気に入り銘柄のシグナルと価格・日付・ライン条件を一か所で管理します。
+            変更内容は保存後、自動的に通知環境へ反映されます。
+          </p>
+          <div class="notif-chip-row">
+            <span class="notif-chip"><span class="notif-dot {system_dot}"></span>{system_label}</span>
+            <span class="notif-chip"><span class="notif-dot {connection_dot}"></span>{connection_label}</span>
+            <span class="notif-chip">対象 {len(favs)} 銘柄</span>
+            <span class="notif-chip">設定中 {alert_count} 条件</span>
+          </div>
+        </section>
+        """,
         unsafe_allow_html=True,
     )
+
+    # Compact actions directly below the overview.
     col_btn1, col_btn2 = st.columns(2)
     with col_btn1:
         if st.button(
@@ -261,9 +336,9 @@ def show_notification_ui(name_lookup: dict[str, str]) -> None:
     # Section 02 — Detection Defaults
     # ------------------------------------------------------------------ #
     st.markdown(
-        "<div class='kt-section-label'>"
-        "<span class='kt-section-num'>02</span>検知条件デフォルト"
-        "</div>",
+        '<div class="notif-section-head"><div class="notif-section-kicker">02 · DEFAULTS</div>'
+        '<div class="notif-section-title">共通の検知条件</div>'
+        '<div class="notif-section-copy">個別指定のない銘柄に適用される基本ルールです。</div></div>',
         unsafe_allow_html=True,
     )
 
@@ -299,13 +374,11 @@ def show_notification_ui(name_lookup: dict[str, str]) -> None:
     # Section 03 — Per-Ticker Settings (expander list with pagination)
     # ------------------------------------------------------------------ #
     st.markdown(
-        "<div class='kt-section-label'>"
-        "<span class='kt-section-num'>03</span>お気に入り銘柄別の個別設定"
-        "</div>",
+        '<div class="notif-section-head"><div class="notif-section-kicker">03 · ASSETS</div>'
+        '<div class="notif-section-title">銘柄別の通知ルール</div>'
+        '<div class="notif-section-copy">検索して銘柄を開き、条件を追加・調整できます。</div></div>',
         unsafe_allow_html=True,
     )
-
-    favs = load_favorites()
 
     if not favs:
         st.info(
@@ -359,25 +432,37 @@ def show_notification_ui(name_lookup: dict[str, str]) -> None:
                     config["global_defaults"]["daily_macd_cross"],
                 )
 
-                # Format expander label with summary
-                status_parts = []
-                status_parts.append(f"週足: {'✅' if w_val else '❌'}")
-                status_parts.append(f"日足: {'✅' if d_val else '❌'}")
-                if price_alerts:
-                    status_parts.append(f"価格: {len(price_alerts)}件")
-                else:
-                    status_parts.append("価格: なし")
-                status_str = " ｜ ".join(status_parts)
+                trendlines: list[dict] = t_cfg.setdefault("trendlines", [])
+                date_alerts: list[dict] = t_cfg.setdefault("date_alerts", [])
+                notifications_enabled = t_cfg.get("notifications_enabled", True)
 
-                label = f"{t}  {name}" if name else t
-                expander_label = f"📊 {label}　（{status_str}）"
+                ticker_alert_count = len(price_alerts) + len(trendlines) + len(date_alerts)
+                state_icon = "🟢" if notifications_enabled else "⚫"
+                label = f"{t}　{name}" if name else t
+                expander_label = (
+                    f"{state_icon}  {label}　｜ "
+                    f"週足 {'ON' if w_val else 'OFF'} · 日足 {'ON' if d_val else 'OFF'}　｜ "
+                    f"条件 {ticker_alert_count}"
+                )
 
                 with st.expander(expander_label, expanded=False):
+                    new_notifications_enabled = st.toggle(
+                        "🔔 通知を有効にする",
+                        value=notifications_enabled,
+                        key=f"notify_chk_{t}",
+                        help="この銘柄のすべてのアラート通知を有効にします"
+                    )
+                    if new_notifications_enabled != notifications_enabled:
+                        t_cfg["notifications_enabled"] = new_notifications_enabled
+                        save_config(config)
+                        st.rerun()
+
+                    if not new_notifications_enabled:
+                        st.info("この銘柄の通知はOFFになっています。設定内容は保持されますが、アラートは発火しません。")
+
                     # MACD Settings
                     st.markdown(
-                        "<div style='font-size: 0.85rem; font-weight: bold; margin-bottom: 0.5rem;'>"
-                        "📈 MACD 自動検知条件"
-                        "</div>",
+                        "<div class='notif-subhead'>MACD 自動検知</div>",
                         unsafe_allow_html=True,
                     )
                     col_w, col_d = st.columns(2)
@@ -403,15 +488,13 @@ def show_notification_ui(name_lookup: dict[str, str]) -> None:
                             st.rerun()
 
                     st.markdown(
-                        "<div style='border-bottom: 1px solid var(--border); margin: 0.5rem 0;'></div>",
+                        "<div class='notif-rule'></div>",
                         unsafe_allow_html=True,
                     )
 
                     # Price Alerts
                     st.markdown(
-                        "<div style='font-size: 0.85rem; font-weight: bold; margin-bottom: 0.5rem;'>"
-                        "🔔 設定中の価格アラート"
-                        "</div>",
+                        "<div class='notif-subhead'>価格アラート</div>",
                         unsafe_allow_html=True,
                     )
                     if price_alerts:
@@ -437,18 +520,6 @@ def show_notification_ui(name_lookup: dict[str, str]) -> None:
                     else:
                         st.caption("設定されている価格アラートはありません。")
 
-                    st.markdown(
-                        "<div style='border-bottom: 1px solid var(--border); margin: 0.5rem 0;'></div>",
-                        unsafe_allow_html=True,
-                    )
-
-                    # Add new Price Alert
-                    st.markdown(
-                        "<div style='font-size: 0.85rem; font-weight: bold; margin-bottom: 0.5rem;'>"
-                        "➕ 新規価格アラート追加"
-                        "</div>",
-                        unsafe_allow_html=True,
-                    )
                     with st.form(key=f"add_alert_form_{t}", clear_on_submit=True):
                         col_f1, col_f2, col_f3 = st.columns([5, 4, 3])
                         new_price = col_f1.number_input(
@@ -482,6 +553,80 @@ def show_notification_ui(name_lookup: dict[str, str]) -> None:
                                 save_config(config)
                                 st.toast(f"{t} に価格アラートを追加しました。")
                                 st.rerun()
+
+                    st.markdown(
+                        "<div class='notif-rule'></div>",
+                        unsafe_allow_html=True,
+                    )
+
+                    # Date Alerts
+                    st.markdown(
+                        "<div class='notif-subhead'>日付アラート</div>",
+                        unsafe_allow_html=True,
+                    )
+                    if date_alerts:
+                        for i, da in enumerate(date_alerts):
+                            col_info, col_del = st.columns([8, 2])
+                            col_info.markdown(
+                                f"<div style='font-size: 0.85rem; padding-top: 4px;'>"
+                                f"`{da['date']}` ({da.get('label', '')})"
+                                f"</div>",
+                                unsafe_allow_html=True,
+                            )
+                            if col_del.button(
+                                "🗑️ 削除",
+                                key=f"del_da_{t}_{i}",
+                                use_container_width=True,
+                            ):
+                                date_alerts.pop(i)
+                                save_config(config)
+                                st.toast(f"{t} の日付アラートを削除しました。")
+                                st.rerun()
+                    else:
+                        st.caption("設定されている日付アラートはありません。")
+
+                    with st.form(key=f"add_date_alert_{t}", clear_on_submit=True):
+                        col_f1, col_f2, col_f3 = st.columns([4, 5, 3])
+                        new_da_date = col_f1.date_input("日付", key=f"inp_da_date_{t}")
+                        new_da_label = col_f2.text_input("ラベル (決算日など)", key=f"inp_da_label_{t}")
+                        submit_da = col_f3.form_submit_button("追加")
+
+                        if submit_da:
+                            date_alerts.append({"date": new_da_date.isoformat(), "label": new_da_label})
+                            save_config(config)
+                            st.toast(f"{t} に日付アラートを追加しました。")
+                            st.rerun()
+
+                    st.markdown(
+                        "<div class='notif-rule'></div>",
+                        unsafe_allow_html=True,
+                    )
+
+                    # Trendline Alerts
+                    st.markdown(
+                        "<div class='notif-subhead'>ラインアラート</div>",
+                        unsafe_allow_html=True,
+                    )
+                    if trendlines:
+                        for i, tl in enumerate(trendlines):
+                            col_info, col_del = st.columns([8, 2])
+                            col_info.markdown(
+                                f"<div style='font-size: 0.85rem; padding-top: 4px;'>"
+                                f"ライン {i+1}: `{tl.get('x0', '')[:10]}` から `{tl.get('x1', '')[:10]}`"
+                                f"</div>",
+                                unsafe_allow_html=True,
+                            )
+                            if col_del.button(
+                                "🗑️ 削除",
+                                key=f"del_tl_{t}_{i}",
+                                use_container_width=True,
+                            ):
+                                trendlines.pop(i)
+                                save_config(config)
+                                st.toast(f"{t} のラインアラートを削除しました。")
+                                st.rerun()
+                    else:
+                        st.caption("チャート上に引かれたラインはありません。")
 
             # More/Less buttons
             if len(filtered_list) > 5:

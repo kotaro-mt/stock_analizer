@@ -35,9 +35,16 @@ def git_push_changes(message: str) -> bool:
             text=True,
             timeout=10,
         )
-        if status.returncode != 0 or not status.stdout.strip():
-            # No changes to commit
-            return True
+        if status.returncode != 0:
+            return False
+
+        if not status.stdout.strip():
+            # There may still be a local commit whose previous push failed.
+            push_res = subprocess.run(
+                ["git", "push"], cwd=str(ROOT), capture_output=True,
+                text=True, timeout=30,
+            )
+            return push_res.returncode == 0
 
         # Stage settings files
         files_to_stage = ["notification_config.json", "notification_state.json", "artifacts/favorites.json"]
@@ -50,8 +57,13 @@ def git_push_changes(message: str) -> bool:
         subprocess.run(["git", "add"] + existing_files, cwd=str(ROOT), check=True)
         # Commit
         commit_res = subprocess.run(["git", "commit", "-m", message], cwd=str(ROOT), capture_output=True, text=True)
-        if "nothing to commit" in commit_res.stdout or "nothing to commit" in commit_res.stderr:
-            return True
+        nothing_to_commit = (
+            "nothing to commit" in commit_res.stdout
+            or "nothing to commit" in commit_res.stderr
+        )
+        if commit_res.returncode != 0 and not nothing_to_commit:
+            logger.warning("Git commit failed: %s", commit_res.stderr or commit_res.stdout)
+            return False
         # Push
         push_res = subprocess.run(["git", "push"], cwd=str(ROOT), capture_output=True, text=True, timeout=30)
         if push_res.returncode == 0:

@@ -13,11 +13,13 @@ from pathlib import Path
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 from plotly.subplots import make_subplots
 
 from data import get_ticker_name, load_ohlcv, normalise_ticker
 from evaluator import EvalParams, evaluate_lines
-from indicators import ichimoku, macd, sma, volume_ma
+from indicators import ichimoku, macd, rsi, sma, volume_ma
+from git_utils import git_push_changes
 from trendlines import (
     Line,
     TrendParams,
@@ -75,20 +77,20 @@ SCALE_HINTS: dict[str, dict[str, str]] = {
 #   shu vermilion accent. Distinctive — intentionally avoids generic
 #   SaaS blue-on-white / Inter-on-white aesthetics.
 THEME = {
-    "paper":         "#F4EFE3",  # washi page background
-    "paper_alt":     "#ECE5D3",
-    "surface":       "#FBF8EF",  # card / chart surface
-    "ink":           "#14110E",  # sumi ink — text, borders, structure
-    "ink_soft":      "#2A251E",
-    "ink_muted":     "#5C554A",  # secondary labels, tick marks
-    "border":        "#CFC6B0",
-    "border_strong": "#A89B7A",
-    "shu":           "#B7362E",  # 朱 vermilion — signature accent, rising candles
-    "shu_deep":      "#8A231C",
-    "forest":        "#2E6B47",  # deep green — falling candles, support
-    "navy":          "#1E3A5F",  # 紺 — rising trend lines, indicators
-    "copper":        "#8A6E3A",  # aged gold — falling trend lines, MACD signal
-    "gold":          "#9B7421",  # ATH / ATL markers
+    "paper":         "#0F172A",
+    "paper_alt":     "#1E293B",
+    "surface":       "rgba(30,41,59,0.7)",
+    "ink":           "#F1F5F9",
+    "ink_soft":      "#CBD5E1",
+    "ink_muted":     "#64748B",
+    "border":        "rgba(255,255,255,0.08)",
+    "border_strong": "rgba(255,255,255,0.15)",
+    "shu":           "#F472B6",
+    "shu_deep":      "#BE185D",
+    "forest":        "#34D399",
+    "navy":          "#38BDF8",
+    "copper":        "#A78BFA",
+    "gold":          "#FBBF24",
 }
 
 LINE_COLORS = {
@@ -118,9 +120,8 @@ SCALE_LABELS_JA = {
 # IBM Plex Mono (numerics), all loaded from Google Fonts.
 THEME_CSS = f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;500;600;700&family=IBM+Plex+Sans+JP:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-/* ---- Root tokens as CSS variables (match the Python THEME dict) ----- */
 :root {{
     --paper:         {THEME['paper']};
     --paper-alt:     {THEME['paper_alt']};
@@ -136,945 +137,262 @@ THEME_CSS = f"""
     --navy:          {THEME['navy']};
     --copper:        {THEME['copper']};
     --gold:          {THEME['gold']};
-    --font-display:  'Shippori Mincho', 'Hiragino Mincho ProN',
-                     'Yu Mincho', serif;
-    --font-body:     'IBM Plex Sans JP', 'Hiragino Sans',
-                     'Noto Sans CJK JP', sans-serif;
-    --font-mono:     'IBM Plex Mono', 'Menlo', monospace;
+    --font-display:  'Inter', sans-serif;
+    --font-body:     'Inter', sans-serif;
+    --font-mono:     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }}
 
-/* ---- Base typography + paper page background ------------------------ */
+/* Base */
 html, body, [class*="st-"] {{
-    font-family: var(--font-body);
-    font-weight: 400;
-    letter-spacing: 0.01em;
-    color: var(--ink);
+    font-family: var(--font-body) !important;
+    color: var(--ink) !important;
 }}
 .stApp {{
     background-color: var(--paper);
-    /* Subtle paper grain via inline SVG turbulence */
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.08 0 0 0 0 0.07 0 0 0 0 0.05 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-    color: var(--ink);
+    background-image: 
+      radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
+      radial-gradient(at 50% 0%, hsla(225,39%,30%,0.15) 0, transparent 50%), 
+      radial-gradient(at 100% 0%, hsla(339,49%,30%,0.1) 0, transparent 50%);
+    background-attachment: fixed;
 }}
 
-/* ---- Headings use the mincho display serif ------------------------- */
-h1, h2, h3, h4, h5,
-[data-testid="stMarkdownContainer"] h1,
-[data-testid="stMarkdownContainer"] h2,
-[data-testid="stMarkdownContainer"] h3 {{
+h1, h2, h3, h4, h5, [data-testid="stMarkdownContainer"] h1 {{
     font-family: var(--font-display) !important;
     color: var(--ink);
     font-weight: 600;
-    letter-spacing: 0;
-    line-height: 1.35;
 }}
-h1 {{ font-size: 2.375rem; font-weight: 700; }}
-h2 {{ font-size: 1.5rem; }}
-h3 {{ font-size: 1.125rem; }}
+h1 {{ font-size: 2.25rem; font-weight: 700; letter-spacing: -0.025em; border: none !important; }}
 
-/* Hero title — hanko square accent + ink rule underneath */
-.stApp h1:first-of-type {{
-    position: relative;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid var(--ink);
-    display: inline-block;
-    margin-bottom: 0.5rem;
-}}
-
-/* ---- Caption = muted italic mincho (editorial byline) ------------- */
-[data-testid="stCaptionContainer"], .stCaption,
-[data-testid="stCaptionContainer"] p {{
-    font-family: var(--font-display) !important;
-    font-style: italic;
-    color: var(--ink-muted) !important;
-    font-size: 0.9375rem;
-    line-height: 1.75;
-}}
-
-/* ---- Sidebar — vertical paper strip + vermilion margin rule ------ */
+/* Sidebar */
 [data-testid="stSidebar"] {{
-    background: var(--surface);
-    border-right: 1px solid var(--ink);
-    box-shadow: 2px 0 0 var(--shu);
+    background-color: rgba(15,23,42,0.9) !important;
+    backdrop-filter: blur(12px);
+    border-right: 1px solid var(--border);
 }}
-[data-testid="stSidebar"] h1,
-[data-testid="stSidebar"] h2,
-[data-testid="stSidebar"] h3 {{
-    font-family: var(--font-body) !important;
-    font-size: 0.75rem !important;
-    text-transform: uppercase;
-    letter-spacing: 0.2em;
-    color: var(--shu) !important;
-    font-weight: 600;
-    margin-top: 1.75rem;
-    padding-bottom: 0.375rem;
-    border-bottom: 1px solid var(--ink);
+[data-testid="stSidebar"] hr {{
+    border-color: var(--border);
+}}
+[data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {{
+    color: var(--navy) !important;
+    font-size: 0.8rem !important;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+    margin-top: 1rem;
 }}
 
-/* ---- Widget labels -------------------------------------------------- */
-[data-testid="stWidgetLabel"] p,
-[data-testid="stWidgetLabel"] label,
-[data-testid="stWidgetLabel"] {{
-    color: var(--ink) !important;
-    font-family: var(--font-body) !important;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    letter-spacing: 0.02em;
-}}
-
-/* ---- Metric cards — square ink frame, hanko-stamp hover accent --- */
-[data-testid="stMetric"] {{
-    background: var(--surface);
-    border: 1px solid var(--ink);
-    border-radius: 0;
-    padding: 20px 24px;
-    position: relative;
-    transition: transform 200ms ease-out;
-}}
-[data-testid="stMetric"]::after {{
-    content: "";
-    position: absolute;
-    left: -1px;
-    right: -1px;
-    bottom: -4px;
-    height: 3px;
-    background: var(--shu);
-    transform: scaleX(0);
-    transform-origin: left;
-    transition: transform 280ms cubic-bezier(0.2, 0.7, 0.2, 1);
-}}
-[data-testid="stMetric"]:hover::after {{
-    transform: scaleX(1);
-}}
-[data-testid="stMetricLabel"],
-[data-testid="stMetricLabel"] p {{
-    color: var(--ink-muted) !important;
-    font-family: var(--font-body) !important;
-    font-size: 0.6875rem;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-}}
-[data-testid="stMetricValue"],
-[data-testid="stMetricValue"] div {{
-    font-family: var(--font-mono) !important;
-    color: var(--ink) !important;
-    font-weight: 500;
-    font-size: 1.75rem;
-    font-variant-numeric: tabular-nums;
-    line-height: 1.2;
-    margin-top: 0.375rem;
-}}
-[data-testid="stMetricDelta"],
-[data-testid="stMetricDelta"] div {{
-    font-family: var(--font-mono) !important;
-    font-variant-numeric: tabular-nums;
-    font-size: 0.8125rem;
-    font-weight: 500;
-}}
-
-/* ---- Custom metric card (used for PER/PBR/配当利回り so we can
-       embed an inline note inside the same white frame as the value,
-       AND keep all three fundamentals cards at matching heights).
-       Structurally mirrors [data-testid="stMetric"] so the look
-       matches if a real stMetric sits next to one. ---------------- */
-.kt-metric-card {{
-    background: var(--surface);
-    border: 1px solid var(--ink);
-    border-radius: 0;
-    padding: 20px 24px;
-    position: relative;
-    transition: transform 200ms ease-out;
-    /* Fill the column so sibling cards stay aligned even when one
-       has an extra note underneath the value. */
-    min-height: 148px;
-    height: 100%;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-}}
-.kt-metric-card::after {{
-    content: "";
-    position: absolute;
-    left: -1px;
-    right: -1px;
-    bottom: -4px;
-    height: 3px;
-    background: var(--shu);
-    transform: scaleX(0);
-    transform-origin: left;
-    transition: transform 280ms cubic-bezier(0.2, 0.7, 0.2, 1);
-}}
-.kt-metric-card:hover::after {{
-    transform: scaleX(1);
-}}
-.kt-metric-card .kt-metric-label {{
-    color: var(--ink-muted);
-    font-family: var(--font-body);
-    font-size: 0.6875rem;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-}}
-.kt-metric-card .kt-metric-value {{
-    font-family: var(--font-mono);
-    color: var(--ink);
-    font-weight: 500;
-    font-size: 1.75rem;
-    font-variant-numeric: tabular-nums;
-    line-height: 1.2;
-    margin-top: 0.375rem;
-}}
-.kt-metric-card .kt-metric-note {{
-    color: var(--ink-muted);
-    font-family: var(--font-display);
-    font-style: italic;
-    font-size: 0.75rem;
-    line-height: 1.45;
-    margin-top: auto;
-    padding-top: 0.75rem;
-    opacity: 0.9;
-}}
-
-/* ---- Hero card (the prominent ticker/name + price block that sits
-       above the fundamentals row). Uses a large mincho display title
-       for the ticker+company name so the identity of the asset is
-       instantly readable, with the price + delta underneath. ----- */
-.kt-hero-card {{
-    background: var(--surface);
-    border: 1px solid var(--ink);
-    border-radius: 0;
-    padding: 22px 28px 24px 28px;
-    position: relative;
-    margin-bottom: 0.875rem;
-}}
-.kt-hero-card::after {{
-    content: "";
-    position: absolute;
-    left: -1px;
-    right: -1px;
-    bottom: -4px;
-    height: 3px;
-    background: var(--shu);
-}}
-.kt-hero-card .kt-hero-title {{
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 1.75rem;
-    color: var(--ink);
-    line-height: 1.25;
-    letter-spacing: 0.01em;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0.6em;
-}}
-.kt-hero-card .kt-hero-ticker {{
-    font-family: var(--font-mono);
-    font-weight: 600;
-    font-size: 1.3rem;
-    color: var(--shu);
-    letter-spacing: 0.04em;
-    padding: 2px 10px;
-    border: 1px solid var(--shu);
-    background: var(--paper);
-}}
-.kt-hero-card .kt-hero-price-row {{
-    margin-top: 0.875rem;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 1.1em;
-}}
-.kt-hero-card .kt-hero-price {{
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-    font-size: 2.375rem;
-    font-weight: 500;
-    color: var(--ink);
-    line-height: 1;
-}}
-.kt-hero-card .kt-hero-delta {{
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-    font-size: 1rem;
-    font-weight: 500;
-    padding: 3px 10px;
-    border: 1px solid currentColor;
-}}
-.kt-hero-card .kt-hero-delta.up    {{ color: var(--shu);    }}
-.kt-hero-card .kt-hero-delta.down  {{ color: var(--forest); }}
-.kt-hero-card .kt-hero-delta.flat  {{ color: var(--ink-muted); }}
-
-/* ---- Buttons — stamped ink block that shifts on press ------------ */
-.stButton > button,
-.stFormSubmitButton > button,
-[data-testid="stFormSubmitButton"] button {{
-    background: var(--surface);
-    color: var(--ink);
-    border: 1px solid var(--ink);
-    border-radius: 0;
-    font-family: var(--font-body);
-    font-weight: 500;
-    padding: 0.5rem 1.25rem;
-    letter-spacing: 0.06em;
-    box-shadow: 3px 3px 0 var(--ink);
-    transition: transform 120ms ease-out, box-shadow 120ms ease-out,
-                background 150ms ease-out, color 150ms ease-out;
-}}
-.stButton > button:hover,
-.stFormSubmitButton > button:hover,
-[data-testid="stFormSubmitButton"] button:hover {{
-    background: var(--shu);
-    color: var(--paper);
-    box-shadow: 5px 5px 0 var(--ink);
-    transform: translate(-2px, -2px);
-}}
-.stButton > button:active,
-.stFormSubmitButton > button:active,
-[data-testid="stFormSubmitButton"] button:active {{
-    box-shadow: 1px 1px 0 var(--ink);
-    transform: translate(2px, 2px);
-}}
-.stButton > button:focus:not(:active),
-.stFormSubmitButton > button:focus:not(:active),
-[data-testid="stFormSubmitButton"] button:focus:not(:active) {{
-    outline: 2px solid var(--shu);
-    outline-offset: 2px;
-}}
-
-/* ---- Inputs / selectbox (closed state) ---------------------------- */
-.stSelectbox [data-baseweb="select"] > div,
-.stTextInput [data-baseweb="input"],
-.stNumberInput [data-baseweb="input"] {{
-    border-radius: 0 !important;
-    border: 1px solid var(--ink) !important;
-    background: #ffffff !important;
-}}
-.stSelectbox [data-baseweb="select"] div,
-.stSelectbox [data-baseweb="select"] span,
-.stSelectbox [data-baseweb="select"] input {{
-    color: var(--ink) !important;
-    font-family: var(--font-body) !important;
-}}
-
-/* Force the inner <input> element of text/number inputs to a legible
-   white-on-black-text combo. Baseweb nests the actual editable element
-   a few levels deep, so the wrapper rule above doesn't reach it and
-   the text comes out dark-on-dark under this theme. */
-.stTextInput input,
-.stTextInput [data-baseweb="input"] input,
-.stNumberInput input,
-.stNumberInput [data-baseweb="input"] input {{
-    background: #ffffff !important;
-    color: #000000 !important;
-    -webkit-text-fill-color: #000000 !important;
-    caret-color: #000000 !important;
-    font-family: var(--font-mono) !important;
-}}
-.stTextInput input::placeholder,
-.stNumberInput input::placeholder {{
-    color: #888888 !important;
-    -webkit-text-fill-color: #888888 !important;
-}}
-
-/* ---- Selectbox dropdown menu (rendered in a React portal, so the
-       selectors below intentionally target body-level baseweb nodes,
-       not .stSelectbox descendants). Without this the open menu
-       renders with baseweb's default dark-on-dark scheme. */
-[data-baseweb="popover"],
-[data-baseweb="popover"] > div,
-[data-baseweb="menu"],
-ul[role="listbox"] {{
+/* Glassmorphism Cards */
+[data-testid="stMetric"], .kt-metric-card, .kt-hero-card, [data-testid="stExpander"], [data-testid="stPlotlyChart"], [data-testid="stDataFrame"] {{
     background: var(--surface) !important;
-    color: var(--ink) !important;
-    border: 1px solid var(--ink) !important;
-    border-radius: 0 !important;
-    box-shadow: 3px 3px 0 var(--ink) !important;
-    font-family: var(--font-body) !important;
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06) !important;
+    padding: 1.25rem !important;
+    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+    margin-bottom: 1rem;
 }}
-ul[role="listbox"] li,
-[data-baseweb="menu"] li,
-[role="option"] {{
+[data-testid="stMetric"]:hover, .kt-metric-card:hover, .kt-hero-card:hover {{
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05) !important;
+    border-color: var(--border-strong) !important;
+}}
+
+/* Typography inside cards */
+[data-testid="stMetricLabel"], [data-testid="stMetricLabel"] p, .kt-metric-label {{ color: var(--ink-muted) !important; font-size: 0.75rem !important; text-transform: uppercase; letter-spacing: 0.05em; }}
+[data-testid="stMetricValue"], [data-testid="stMetricValue"] div, .kt-metric-value {{ color: var(--ink) !important; font-size: 1.875rem !important; font-weight: 600 !important; font-family: var(--font-body) !important; }}
+[data-testid="stMetricDelta"], [data-testid="stMetricDelta"] div {{ font-family: var(--font-body) !important; }}
+.kt-metric-note {{ color: var(--ink-muted); font-size: 0.75rem; margin-top: auto; padding-top: 0.5rem; }}
+
+/* Hero Card Tweaks */
+.kt-hero-card {{ padding: 1.5rem 1.8rem !important; }}
+.kt-hero-title {{ font-size: 1.5rem; font-weight: 700; color: var(--ink); display: flex; align-items: baseline; gap: 0.6em; }}
+.kt-hero-ticker {{ color: var(--navy); background: rgba(56,189,248,0.1); padding: 4px 10px; border-radius: 6px; font-size: 1.1rem; border: 1px solid rgba(56,189,248,0.2); font-family: var(--font-mono); }}
+.kt-hero-price-row {{ display: flex; align-items: baseline; gap: 1em; margin-top: 1rem; }}
+.kt-hero-price {{ font-size: 2.5rem; font-weight: 600; font-variant-numeric: tabular-nums; }}
+.kt-hero-delta {{ padding: 2px 10px; border-radius: 6px; font-size: 1rem; font-weight: 500; font-variant-numeric: tabular-nums; }}
+.kt-hero-delta.up {{ color: var(--forest); background: rgba(52,211,153,0.1); }}
+.kt-hero-delta.down {{ color: var(--shu); background: rgba(244,114,182,0.1); }}
+.kt-hero-delta.flat {{ color: var(--ink-muted); background: rgba(255,255,255,0.05); }}
+
+/* Buttons */
+.stButton > button, .stFormSubmitButton > button, button[kind="secondary"], button[kind="primary"] {{
     background: var(--surface) !important;
+    background-color: var(--surface) !important;
     color: var(--ink) !important;
-    font-family: var(--font-body) !important;
-}}
-ul[role="listbox"] li:hover,
-[data-baseweb="menu"] li:hover,
-[role="option"]:hover,
-[role="option"][aria-selected="true"] {{
-    background: var(--paper-alt) !important;
-    color: var(--shu) !important;
-}}
-
-/* Radio — keep native layout, recolour */
-div[role="radiogroup"] label p {{
-    color: var(--ink);
-    font-size: 0.875rem;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
     font-weight: 500;
+    transition: all 0.2s;
+    box-shadow: none !important;
 }}
-div[role="radiogroup"] label:hover p {{
-    color: var(--shu);
+.stButton > button:hover, .stFormSubmitButton > button:hover, button[kind="secondary"]:hover, button[kind="primary"]:hover {{
+    background: rgba(56,189,248,0.15) !important;
+    background-color: rgba(56,189,248,0.15) !important;
+    border-color: var(--navy) !important;
+    color: var(--navy) !important;
+    transform: translateY(-1px);
 }}
-
-/* Checkbox text */
-[data-testid="stCheckbox"] label p {{
-    color: var(--ink);
-    font-family: var(--font-body);
-}}
-
-/* ---- Slider — vermilion handle on ink track --------------------- */
-[data-testid="stSlider"] [data-baseweb="slider"] div[role="slider"] {{
-    background: var(--shu);
-    border: 1px solid var(--ink);
-    border-radius: 0;
-    width: 14px !important;
-    height: 14px !important;
-}}
-[data-testid="stSlider"] [data-baseweb="slider"] > div > div {{
-    background: var(--ink);
+.stButton > button:active, .stFormSubmitButton > button:active, button[kind="secondary"]:active, button[kind="primary"]:active {{
+    transform: translateY(1px);
 }}
 
-/* ---- Expanders — square ink card + offset shadow ---------------- */
-[data-testid="stExpander"] {{
-    background: var(--surface);
-    border: 1px solid var(--ink);
-    border-radius: 0;
-    box-shadow: 3px 3px 0 var(--border-strong);
-    overflow: hidden;
+/* Inputs */
+.stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] > div,
+div[data-baseweb="input"], div[data-baseweb="input"] > div, .stTextArea [data-baseweb="textarea"] {{
+    background: rgba(15,23,42,0.6) !important;
+    background-color: rgba(15,23,42,0.6) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
 }}
-[data-testid="stExpander"] summary,
-[data-testid="stExpander"] details > summary {{
-    font-family: var(--font-display);
-    font-weight: 600;
-    color: var(--ink);
-    font-size: 1rem;
+.stTextInput input, .stNumberInput input, .stSelectbox [data-baseweb="select"] div, .stSelectbox [data-baseweb="select"] span {{
+    color: var(--ink) !important;
+    -webkit-text-fill-color: var(--ink) !important;
 }}
-
-/* ---- Plotly chart container — the showpiece card --------------- */
-[data-testid="stPlotlyChart"] {{
-    background: var(--surface);
-    border: 1px solid var(--ink);
-    border-radius: 0;
-    padding: 4px;
-    box-shadow: 5px 5px 0 var(--ink);
-    margin-top: 1.5rem;
-    margin-bottom: 0.5rem;
+.stTextInput input:focus, .stNumberInput input:focus, .stSelectbox div[data-baseweb="select"] > div:focus-within {{
+    border-color: var(--navy) !important;
+    box-shadow: 0 0 0 1px var(--navy) !important;
 }}
 
-/* ---- Dataframe ------------------------------------------------- */
-[data-testid="stDataFrame"] {{
-    border: 1px solid var(--ink);
-    border-radius: 0;
-    overflow: hidden;
-    box-shadow: 3px 3px 0 var(--border-strong);
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
+/* Dropdowns */
+[data-baseweb="popover"], [data-baseweb="menu"], ul[role="listbox"] {{
+    background-color: var(--paper-alt) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+}}
+ul[role="listbox"] li, [role="option"] {{
+    background-color: transparent !important;
+    color: var(--ink) !important;
+}}
+ul[role="listbox"] li:hover, [role="option"]:hover {{
+    background-color: rgba(56,189,248,0.15) !important;
+    color: var(--navy) !important;
 }}
 
-/* ---- Alerts --------------------------------------------------- */
+/* Checkbox/Radio */
+[data-testid="stCheckbox"] label p, div[role="radiogroup"] label p {{ color: var(--ink); font-weight: 500; }}
+
+/* Expanders */
+[data-testid="stExpander"] details > summary {{ font-weight: 600; color: var(--ink); }}
+
+/* Alerts */
 [data-testid="stAlert"] {{
-    border-radius: 0;
-    border: 1px solid var(--ink);
-    border-left: 4px solid var(--shu);
-    box-shadow: 3px 3px 0 var(--border-strong);
-    font-family: var(--font-body);
+    background-color: rgba(30,41,59,0.7) !important;
+    border: 1px solid var(--border) !important;
+    border-left: 4px solid var(--navy) !important;
+    border-radius: 8px !important;
+    color: var(--ink) !important;
 }}
 
-/* ---- Editorial horizontal rules ----------------------------- */
-hr {{
-    border: 0;
-    border-top: 1px solid var(--ink);
-    margin: 1.5rem 0;
+/* Hide Sidebar button */
+[data-testid="stSidebarCollapseButton"], button[aria-label="Close sidebar"] {{ display: none !important; }}
+
+/* Scrollbar */
+::-webkit-scrollbar {{ width: 8px; height: 8px; }}
+::-webkit-scrollbar-track {{ background: transparent; }}
+::-webkit-scrollbar-thumb {{ background: var(--border-strong); border-radius: 4px; border: none; }}
+::-webkit-scrollbar-thumb:hover {{ background: var(--ink-muted); }}
+
+/* Cleanup artifacts of old theme */
+.kt-masthead::before, .kt-masthead::after {{ display: none; }}
+.kt-masthead-kicker, .kt-masthead-byline, .kt-masthead-meta, .kt-masthead-sep {{ display: none; }}
+.kt-subtitle, .kt-subtitle-line, .kt-section-label {{ display: none; }}
+hr {{ border-top: 1px solid var(--border); }}
+
+/* Fix Light Gray Areas */
+[data-testid="stHeader"] {{
+    background-color: transparent !important;
+}}
+.stApp > header {{
+    background-color: transparent !important;
+}}
+[data-testid="stToolbar"] {{
+    right: 2rem;
+}}
+/* Ensure the main background completely covers everything */
+.stApp, .main {{
+    background-color: var(--paper) !important;
 }}
 
-/* ---- Main content breathing room + max width -------------- */
-.main .block-container {{
-    padding-top: 2.5rem;
-    padding-bottom: 3rem;
-    padding-left: 3rem;
-    padding-right: 3rem;
-    max-width: 1480px;
+
+/* Fix Tabs Visibility */
+[data-baseweb="tab-list"] {{
+    background-color: transparent !important;
+    gap: 8px;
+}}
+button[data-baseweb="tab"] {{
+    background-color: rgba(30,41,59,0.5) !important;
+    border: 1px solid var(--border) !important;
+    border-bottom: 0 !important;
+    color: var(--ink-muted) !important;
+    border-radius: 8px 8px 0 0 !important;
+    padding: 10px 20px !important;
+}}
+button[data-baseweb="tab"][aria-selected="true"] {{
+    background-color: rgba(56,189,248,0.15) !important;
+    border-color: var(--navy) !important;
+    color: var(--navy) !important;
+}}
+button[data-baseweb="tab"]:hover {{
+    color: var(--ink) !important;
+    background-color: rgba(30,41,59,0.8) !important;
+}}
+[data-testid="stTab"] {{
+    background-color: transparent !important;
 }}
 
-/* ---- Scrollbar in the sumi palette ------------------------- */
-::-webkit-scrollbar {{ width: 10px; height: 10px; }}
-::-webkit-scrollbar-track {{ background: var(--paper-alt); }}
-::-webkit-scrollbar-thumb {{
-    background: var(--ink-muted);
-    border: 2px solid var(--paper-alt);
-}}
-::-webkit-scrollbar-thumb:hover {{ background: var(--ink); }}
 
-/* =====================================================================
-   POLISH PASS — additional refinements applied via the frontend-design
-   skill. All rules below are additive; they layer on top of the base
-   京都ターミナル theme defined above.
-   ===================================================================== */
-
-/* ---- Masthead: editorial front-page title block ------------------ */
-.kt-masthead {{
-    position: relative;
-    margin-top: -0.5rem;
-    margin-bottom: 2rem;
-    padding-top: 0.75rem;
-    padding-bottom: 1.25rem;
-    border-top: 1px solid var(--ink);
-    overflow: hidden;
-    isolation: isolate;
-}}
-/* Giant ghost kanji watermark — sits behind everything, barely there */
-.kt-masthead::before {{
-    content: "株";
-    position: absolute;
-    right: -0.15em;
-    top: 50%;
-    transform: translateY(-52%);
-    font-family: var(--font-display);
-    font-size: clamp(10rem, 22vw, 18rem);
-    font-weight: 700;
-    line-height: 0.85;
-    color: var(--shu);
-    opacity: 0.055;
-    letter-spacing: -0.04em;
-    pointer-events: none;
-    z-index: 0;
-}}
-/* Double rule at the bottom of the masthead — 1px ink over 4px shu */
-.kt-masthead::after {{
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 6px;
-    background:
-        linear-gradient(to bottom,
-            var(--ink) 0,
-            var(--ink) 1px,
-            transparent 1px,
-            transparent 3px,
-            var(--shu) 3px,
-            var(--shu) 6px);
-}}
-.kt-masthead-kicker {{
-    position: relative;
-    z-index: 1;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.85rem;
-    align-items: baseline;
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-    font-size: 0.7rem;
-    letter-spacing: 0.24em;
-    text-transform: uppercase;
-    color: var(--ink-muted);
-    padding-bottom: 0.75rem;
-    margin-bottom: 0.85rem;
-    border-bottom: 1px dashed var(--border-strong);
-}}
-.kt-kicker-issue {{
-    color: var(--shu);
-    font-weight: 700;
-    letter-spacing: 0.18em;
-}}
-.kt-kicker-issue sup {{
-    font-size: 0.65em;
-    vertical-align: super;
-    margin-left: 1px;
-}}
-.kt-kicker-dot {{
-    color: var(--border-strong);
-    letter-spacing: 0;
-}}
-.kt-kicker-label {{
-    color: var(--ink);
-    font-weight: 600;
-}}
-.kt-kicker-date {{
-    margin-left: auto;
-    color: var(--ink-soft);
-}}
-.kt-masthead h1.kt-masthead-title {{
-    position: relative;
-    z-index: 1;
-    margin: 0;
-    padding: 0;
-    border: none !important;
-    display: block;
-    font-family: var(--font-display) !important;
-    font-size: clamp(2.75rem, 5.6vw, 4.75rem) !important;
-    font-weight: 800 !important;
-    line-height: 1.02;
-    letter-spacing: -0.035em;
-    color: var(--ink);
-    text-shadow: 0.5px 0 0 currentColor;  /* optical boost */
-}}
-/* Killswitch — the base rule adds an underline + inline-block to the
-   first h1 on the page. Our masthead wraps h1 so we need to unset both. */
-.stApp .kt-masthead h1.kt-masthead-title {{
-    display: block !important;
-    border-bottom: none !important;
-    padding-bottom: 0 !important;
-    margin-bottom: 0 !important;
-}}
-.kt-masthead-title .kt-title-accent {{
-    color: var(--shu);
-}}
-.kt-masthead-byline {{
-    position: relative;
-    z-index: 1;
-    margin-top: 0.85rem;
-    font-family: var(--font-display);
-    font-style: italic;
-    color: var(--ink-muted);
-    font-size: 1rem;
-    line-height: 1.6;
-    max-width: 62ch;
-}}
-.kt-masthead-byline-en {{
-    display: block;
-    font-family: var(--font-mono);
-    font-style: normal;
-    font-size: 0.7rem;
-    letter-spacing: 0.24em;
-    text-transform: uppercase;
-    color: var(--shu);
-    margin-top: 0.35rem;
-    font-weight: 600;
-}}
-.kt-masthead-meta {{
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-    font-size: 0.75rem;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--ink-muted);
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-    align-items: center;
-}}
-.kt-masthead-issue {{
-    color: var(--shu);
-    font-weight: 600;
-    letter-spacing: 0.15em;
-}}
-.kt-masthead-issue sup {{
-    font-size: 0.65em;
-    vertical-align: super;
-    margin-left: 1px;
-}}
-.kt-masthead-sep {{
-    color: var(--border-strong);
-    font-family: var(--font-display);
-    letter-spacing: 0;
-}}
-.kt-subtitle {{
-    font-family: var(--font-display);
-    font-style: italic;
-    color: var(--ink-muted);
-    font-size: 0.95rem;
-    line-height: 1.7;
-    max-width: 62ch;
-    padding-left: 3rem;
-    margin-top: 0.125rem;
-    margin-bottom: 1.5rem;
-}}
-.kt-subtitle-line {{
-    display: block;
-    font-style: normal;
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    color: var(--ink-soft);
-    letter-spacing: 0.05em;
-    margin-top: 0.35rem;
-    padding-top: 0.35rem;
-    border-top: 1px dashed var(--border-strong);
-}}
-
-/* ---- Section labels: tiny editorial headings for content groups ---- */
-.kt-section-label {{
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-top: 1.75rem;
-    margin-bottom: 0.75rem;
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    text-transform: uppercase;
-    letter-spacing: 0.22em;
-    color: var(--shu);
-    font-weight: 600;
-}}
-.kt-section-label::before {{
-    content: "";
-    display: inline-block;
-    width: 18px;
-    height: 2px;
-    background: var(--shu);
-    flex-shrink: 0;
-}}
-.kt-section-label::after {{
-    content: "";
-    flex: 1;
-    height: 1px;
-    background: var(--border);
-}}
-.kt-section-label .kt-section-num {{
-    font-family: var(--font-mono);
-    color: var(--ink-muted);
-    font-weight: 500;
-    font-size: 0.625rem;
-    padding: 1px 6px;
-    border: 1px solid var(--border-strong);
-    letter-spacing: 0.1em;
-}}
-
-/* ---- Radio buttons: horizontal pill-tab look ---------------------- */
-/* Applies to every st.radio(horizontal=True). Individual radios
-   become bordered rectangles; the selected one fills with shu ink. */
+/* ---- Custom Styling for st.radio (Selection Tabs) ---- */
 div[role="radiogroup"] {{
-    display: flex !important;
+    display: flex;
+    gap: 4px;
+    background: rgba(15,23,42,0.6);
+    padding: 6px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
     flex-wrap: wrap;
-    gap: 6px !important;
-    padding: 4px 0 !important;
 }}
 div[role="radiogroup"] > label {{
-    margin: 0 !important;
-    padding: 6px 14px !important;
-    border: 1px solid var(--ink) !important;
-    background: var(--surface) !important;
+    flex: 1;
+    min-width: 60px;
+    text-align: center;
+    background: transparent;
+    padding: 8px 4px;
+    border-radius: 6px;
     cursor: pointer;
-    transition: background 140ms ease-out, color 140ms ease-out,
-                box-shadow 140ms ease-out, transform 140ms ease-out;
-    box-shadow: 2px 2px 0 var(--ink);
+    transition: all 0.2s;
+    margin: 0 !important;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }}
 div[role="radiogroup"] > label:hover {{
-    background: var(--paper-alt) !important;
-    transform: translate(-1px, -1px);
-    box-shadow: 3px 3px 0 var(--ink);
+    background: rgba(56,189,248,0.1);
 }}
-/* Hide the native round radio dot inside the label */
 div[role="radiogroup"] > label > div:first-child {{
-    display: none !important;
+    display: none !important; /* Hide native radio circles */
 }}
-/* Text inside the pill */
 div[role="radiogroup"] > label p {{
-    font-family: var(--font-body) !important;
-    font-size: 0.8125rem !important;
-    font-weight: 500 !important;
-    letter-spacing: 0.04em !important;
-    margin: 0 !important;
-    color: var(--ink) !important;
+    color: var(--ink-muted);
+    font-weight: 600;
+    font-size: 0.8rem;
+    margin: 0;
+    transition: color 0.2s;
 }}
-/* Selected pill: shu fill, paper text, inset shadow */
 div[role="radiogroup"] > label:has(input:checked) {{
-    background: var(--shu) !important;
-    box-shadow: 1px 1px 0 var(--ink), inset 0 0 0 1px var(--shu-deep);
-    transform: translate(1px, 1px);
+    background: rgba(56,189,248,0.2) !important;
+    border-radius: 6px;
 }}
 div[role="radiogroup"] > label:has(input:checked) p {{
-    color: var(--paper) !important;
-}}
-div[role="radiogroup"] > label:has(input:checked):hover p {{
-    color: var(--paper) !important;
+    color: var(--navy) !important;
+    text-shadow: 0 0 10px rgba(56,189,248,0.3);
 }}
 
-/* ---- Custom checkbox: square ink box, shu check mark ------------- */
-/* Baseweb renders the native checkbox inside a styled <span>; we
-   hide the default visual and paint our own with a border + ::after
-   pseudo-element for the checkmark. */
-[data-testid="stCheckbox"] label {{
-    display: flex !important;
-    align-items: center;
-    gap: 0.55rem !important;
+/* Also style selectboxes for dark theme properly */
+[data-baseweb="select"] {{
     cursor: pointer;
 }}
-[data-testid="stCheckbox"] label > span:first-child,
-[data-testid="stCheckbox"] [data-baseweb="checkbox"] > span:first-child {{
-    width: 16px !important;
-    height: 16px !important;
-    min-width: 16px !important;
-    background: var(--surface) !important;
-    border: 1.5px solid var(--ink) !important;
-    border-radius: 0 !important;
-    box-shadow: 1px 1px 0 var(--ink);
-    position: relative;
-    transition: background 140ms ease-out;
-}}
-/* Hide the inner baseweb check icon; we draw our own via ::after */
-[data-testid="stCheckbox"] label > span:first-child > * {{
-    opacity: 0 !important;
-}}
-[data-testid="stCheckbox"] label:has(input:checked) > span:first-child {{
-    background: var(--shu) !important;
-    border-color: var(--ink) !important;
-}}
-[data-testid="stCheckbox"] label:has(input:checked) > span:first-child::after {{
-    content: "";
-    position: absolute;
-    left: 3px;
-    top: -1px;
-    width: 5px;
-    height: 10px;
-    border: solid var(--paper);
-    border-width: 0 2px 2px 0;
-    transform: rotate(42deg);
-}}
 
-/* ---- Dataframe header polish ---------------------------------- */
-[data-testid="stDataFrame"] thead tr th,
-[data-testid="stDataFrame"] [role="columnheader"] {{
-    background: var(--paper-alt) !important;
-    color: var(--ink) !important;
-    font-family: var(--font-body) !important;
-    font-size: 0.6875rem !important;
-    font-weight: 600 !important;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-    border-bottom: 2px solid var(--shu) !important;
-}}
-[data-testid="stDataFrame"] tbody tr td,
-[data-testid="stDataFrame"] [role="gridcell"] {{
-    font-family: var(--font-mono) !important;
-    font-size: 0.8125rem !important;
-}}
 
-/* ---- Alerts: stronger shu bar + stamp shadow ------------------ */
-[data-testid="stAlert"] {{
-    padding: 14px 18px !important;
-    border-left-width: 6px !important;
-}}
-[data-testid="stAlert"] p {{
-    font-family: var(--font-body) !important;
-    color: var(--ink) !important;
-    font-size: 0.875rem;
-    line-height: 1.65;
-}}
-
-/* ---- Sidebar headers: numbered prefix via attr ---------------- */
-/* Streamlit renders st.sidebar.header("X") as an h2. We can't easily
-   inject a counter number without markdown, but we can add a small
-   shu square as a ::before decoration so each section visually
-   separates from the ones above. */
-[data-testid="stSidebar"] h1::before,
-[data-testid="stSidebar"] h2::before,
-[data-testid="stSidebar"] h3::before {{
-    content: "";
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    background: var(--shu);
-    margin-right: 0.55rem;
-    vertical-align: middle;
-    transform: translateY(-1px) rotate(45deg);
-}}
-
-/* ---- Sidebar divider line between controls -------------------- */
-[data-testid="stSidebar"] hr {{
-    border-top: 1px solid var(--border);
-    margin: 1rem 0;
-}}
-
-/* ---- Colophon (editorial footer) ------------------------------ */
-.kt-colophon {{
-    margin-top: 3.5rem;
-    padding-top: 1.25rem;
-    padding-bottom: 0.5rem;
-    border-top: 1px solid var(--ink);
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 1.5rem;
-    position: relative;
-}}
-.kt-colophon::before {{
-    content: "";
-    position: absolute;
-    left: 0;
-    top: -1px;
-    width: 140px;
-    height: 3px;
-    background: var(--shu);
-}}
-.kt-colophon-block {{
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    letter-spacing: 0.1em;
-    line-height: 1.7;
-    color: var(--ink-muted);
-    text-transform: uppercase;
-}}
-.kt-colophon-block strong {{
-    display: block;
-    color: var(--shu);
-    font-weight: 600;
-    margin-bottom: 0.25rem;
-    letter-spacing: 0.18em;
-}}
-.kt-colophon-mark {{
-    font-family: var(--font-display);
-    font-style: italic;
-    font-size: 0.95rem;
-    color: var(--ink-soft);
-    letter-spacing: 0.02em;
-    text-transform: none;
-}}
-
-/* ---- Decorative chart-section divider: editorial rule + seal --- */
-.kt-chart-divider {{
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    margin-top: 1.75rem;
-    margin-bottom: 0.25rem;
-}}
-.kt-chart-divider .kt-chart-divider-line {{
-    flex: 1;
-    height: 1px;
-    background: var(--ink);
-}}
-.kt-chart-divider .kt-chart-divider-seal {{
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 0.8125rem;
-    color: var(--paper);
-    background: var(--shu);
-    padding: 2px 10px;
-    letter-spacing: 0.2em;
-    box-shadow: 2px 2px 0 var(--ink);
-    transform: rotate(-1deg);
-}}
-.kt-chart-divider .kt-chart-divider-kanji {{
-    font-family: var(--font-display);
-    font-size: 0.75rem;
-    color: var(--ink-muted);
-    letter-spacing: 0.3em;
-    text-transform: uppercase;
-}}
-
-/* ---- Code and inline code block styling (for price displays etc.) --- */
-code {{
-    background-color: var(--paper-alt) !important;
-    color: var(--shu) !important;
-    padding: 0.15rem 0.35rem !important;
-    border-radius: 3px !important;
-    font-family: var(--font-mono) !important;
-    font-size: 0.875em !important;
-    border: 1px solid var(--border-strong) !important;
-}}
-
-/* Hide Streamlit's sidebar collapse button and expander button to keep it always open */
-[data-testid="stSidebarCollapseButton"],
-button[data-testid="stSidebarCollapseButton"],
-button[aria-label="Close sidebar"],
-[data-testid="collapsedControl"] {{
-    display: none !important;
-}}
 </style>
 """
 
@@ -1114,34 +432,62 @@ def load_favorites() -> dict[str, str]:
     return out
 
 
-def save_favorites(favs: dict[str, str]) -> None:
+def save_favorites(favs: dict[str, str], *, push: bool = True) -> None:
     FAVORITES_PATH.parent.mkdir(exist_ok=True)
     FAVORITES_PATH.write_text(
         json.dumps(favs, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    try:
-        from git_utils import git_push_changes
+    if push:
         git_push_changes("Update favorites list via UI")
-    except Exception:
-        pass
 
 
-def add_favorite(ticker: str, name: str = "") -> None:
+def add_favorite(ticker: str, name: str = "", *, push: bool = True) -> None:
     favs = load_favorites()
     ticker = normalise_ticker(ticker)
     if not ticker:
         return
     # Don't overwrite an existing non-empty name with a blank one
     favs[ticker] = name or favs.get(ticker, "")
-    save_favorites(favs)
+    save_favorites(favs, push=push)
 
 
-def remove_favorite(ticker: str) -> None:
+def remove_favorite(ticker: str, *, push: bool = True) -> None:
     favs = load_favorites()
     ticker = normalise_ticker(ticker)
     if ticker in favs:
         del favs[ticker]
-        save_favorites(favs)
+        save_favorites(favs, push=push)
+
+
+def sync_favorite_and_notifications(
+    ticker: str, name: str, *, remove: bool = False,
+) -> None:
+    """Persist a favorite and its notification entry with one Git push."""
+    from notification_ui import load_config, save_config
+
+    ticker = normalise_ticker(ticker)
+    if remove:
+        # Keep existing alert settings so re-adding the ticker restores them.
+        remove_favorite(ticker, push=False)
+    else:
+        add_favorite(ticker, name, push=False)
+        config = load_config()
+        defaults = config.get("global_defaults", {})
+        ticker_cfg = config.setdefault("tickers", {}).setdefault(ticker, {})
+        ticker_cfg.setdefault("notifications_enabled", True)
+        ticker_cfg.setdefault("weekly_macd_cross", defaults.get("weekly_macd_cross", True))
+        ticker_cfg.setdefault("daily_macd_cross", defaults.get("daily_macd_cross", False))
+        ticker_cfg.setdefault("price_alert", False)
+        ticker_cfg.setdefault("price_alerts", [])
+        ticker_cfg.setdefault("date_alerts", [])
+        ticker_cfg.setdefault("trendline_alert", defaults.get("trendline_alert", True))
+        ticker_cfg.setdefault("trendlines", [])
+        save_config(config, push=False)
+
+    git_push_changes(
+        "Remove favorite via UI" if remove
+        else "Add favorite and notification settings via UI"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1173,6 +519,90 @@ def load_tuned_params(interval: str = "1d") -> tuple[TrendParams, EvalParams]:
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_chart_data(ticker: str, interval: str = "1d") -> pd.DataFrame | None:
     return load_ohlcv(ticker, auto_download=True, interval=interval)
+
+
+def get_default_ticker() -> str:
+    """Default chart ticker used before the user picks one in the right panel."""
+    return "7203.T"
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def _fetch_last_prices(
+    codes: tuple[str, ...],
+) -> dict[str, dict[str, float | None]]:
+    """Return a startup snapshot of latest close and percentage change.
+
+    Fetch all rows together so tickers without a local OHLCV cache are not
+    left blank.  The caller stores this result in session state, therefore the
+    network request runs only once per app session and not on ticker changes.
+    """
+    out: dict[str, dict[str, float | None]] = {}
+    pending = set(codes)
+
+    try:
+        import yfinance as yf
+
+        quotes = yf.download(
+            list(codes),
+            period="5d",
+            interval="1d",
+            group_by="ticker",
+            auto_adjust=False,
+            progress=False,
+            threads=True,
+        )
+        for code in codes:
+            try:
+                if isinstance(quotes.columns, pd.MultiIndex):
+                    close = pd.to_numeric(quotes[code]["Close"], errors="coerce").dropna()
+                else:
+                    close = pd.to_numeric(quotes["Close"], errors="coerce").dropna()
+                if close.empty:
+                    continue
+                last = float(close.iloc[-1])
+                pct = 0.0
+                if len(close) >= 2 and float(close.iloc[-2]) != 0.0:
+                    pct = (last / float(close.iloc[-2]) - 1.0) * 100.0
+                out[code] = {"last": last, "pct": pct}
+                pending.discard(code)
+            except (KeyError, TypeError, ValueError):
+                continue
+    except Exception as exc:
+        print(f"[chart_app] startup quote download failed: {exc}")
+
+    # Fall back to the local cache for individual symbols the batch provider
+    # could not return (market-specific indices, temporary API errors, etc.).
+    for code in pending:
+        path = ROOT / "cache" / (code.replace(".", "_").replace("^", "_") + ".parquet")
+        try:
+            if path.exists():
+                try:
+                    df = pd.read_parquet(path, columns=["Close"])
+                except Exception:
+                    df = pd.read_parquet(path)
+                    if isinstance(df.columns, pd.MultiIndex):
+                        df.columns = df.columns.get_level_values(0)
+                    df = df[["Close"]] if "Close" in df.columns else None
+            else:
+                df = None
+        except Exception:
+            df = None
+
+        if df is None or df.empty or "Close" not in df.columns:
+            out.setdefault(code, {"last": None, "pct": None})
+            continue
+
+        close = pd.to_numeric(df["Close"], errors="coerce").dropna()
+        if close.empty:
+            out.setdefault(code, {"last": None, "pct": None})
+            continue
+
+        last = float(close.iloc[-1])
+        pct = 0.0
+        if len(close) >= 2 and float(close.iloc[-2]) != 0.0:
+            pct = (last / float(close.iloc[-2]) - 1.0) * 100.0
+        out[code] = {"last": last, "pct": pct}
+    return out
 
 
 def _line_to_dict(line: Line) -> dict:
@@ -1558,6 +988,109 @@ def _format_pct_value(val) -> str:
         return "—"
 
 
+def _is_valid_alert_trendline(line: dict) -> bool:
+    """Reject Plotly helper shapes accidentally returned as user lines."""
+    x0, x1 = line.get("x0"), line.get("x1")
+    if not x0 or not x1 or str(x0) == str(x1):
+        return False
+    if pd.isna(pd.to_datetime(x0, errors="coerce")):
+        return False
+    if pd.isna(pd.to_datetime(x1, errors="coerce")):
+        return False
+    try:
+        float(line.get("y0"))
+        float(line.get("y1"))
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def _render_fundamentals_section(
+    ticker: str, last: float, interval: str, latest_bar: pd.Timestamp,
+) -> None:
+    """Render fundamentals after the chart has already reached the UI."""
+    fund = load_fundamentals(ticker)
+    bar_unit = "営業日" if interval == "1d" else "週"
+    fetched_at = fund.get("fetched_at")
+    fetched_str = (
+        fetched_at.strftime("%Y年%m月%d日 %H:%M")
+        if isinstance(fetched_at, pd.Timestamp) else "—"
+    )
+    st.caption(
+        f"📅 チャート・テクニカル指標の最新{bar_unit}: "
+        f"**{latest_bar:%Y年%m月%d日}** ／ "
+        f"ファンダメンタルズ取得時刻: {fetched_str} (yfinance, 1時間キャッシュ)"
+    )
+    st.markdown(
+        '<div class="kt-section-label">ファンダメンタルズ — 指標</div>',
+        unsafe_allow_html=True,
+    )
+    f1, f2, f3 = st.columns(3)
+
+    forecast = _latest_forecast_eps(ticker)
+    per_val: float | None = None
+    per_is_loss = False
+    if forecast is not None:
+        fcst_eps, _fcst_date, _fcst_label = forecast
+        if fcst_eps <= 0:
+            per_is_loss = True
+        else:
+            per_val = float(last) / fcst_eps
+    else:
+        yf_fwd_eps = fund.get("forward_eps")
+        yf_fwd_per = fund.get("forward_per")
+        if yf_fwd_eps is not None and yf_fwd_eps <= 0:
+            per_is_loss = True
+        elif yf_fwd_per and yf_fwd_per > 0:
+            per_val = float(yf_fwd_per)
+    if per_is_loss:
+        per_value_html = "赤字"
+    elif per_val is not None and per_val > 0:
+        per_value_html = f"{per_val:.1f} 倍"
+    else:
+        per_value_html = "—"
+    f1.markdown(
+        f'''<div class="kt-metric-card">
+        <div class="kt-metric-label">PER</div>
+        <div class="kt-metric-value">{per_value_html}</div>
+        <div class="kt-metric-note">※ 会社予想EPS基準のため他ツール (Yahoo等) と数値が異なる場合があります</div>
+        </div>''',
+        unsafe_allow_html=True,
+    )
+
+    pbr = fund.get("pbr")
+    pbr_value_html = f"{pbr:.2f} 倍" if pbr and pbr > 0 else "—"
+    f2.markdown(
+        f'''<div class="kt-metric-card">
+        <div class="kt-metric-label">PBR</div>
+        <div class="kt-metric-value">{pbr_value_html}</div>
+        </div>''',
+        unsafe_allow_html=True,
+    )
+
+    annual_dps: float | None = None
+    for candidate in (fund.get("dividend_rate"), fund.get("trailing_dividend_rate")):
+        if candidate is not None:
+            try:
+                annual_dps = float(candidate)
+            except (TypeError, ValueError):
+                continue
+            break
+    if annual_dps is None:
+        div_value_html = "—"
+    elif annual_dps == 0:
+        div_value_html = "無配"
+    else:
+        div_value_html = f"{annual_dps / float(last) * 100:.2f}%"
+    f3.markdown(
+        f'''<div class="kt-metric-card">
+        <div class="kt-metric-label">配当利回り</div>
+        <div class="kt-metric-value">{div_value_html}</div>
+        </div>''',
+        unsafe_allow_html=True,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Chart builder
 # ---------------------------------------------------------------------------
@@ -1582,16 +1115,17 @@ def build_figure(
     currency_symbol: str = "¥",
     show_volume: bool = True,
     show_macd: bool = True,
+    show_rsi: bool = True,
     show_per: bool = False,
     per_series: pd.Series | None = None,
     per_source: str = "",
     interval: str = "1d",
-) -> go.Figure:
+) -> tuple[go.Figure, dict[str, int]]:
     """Build the chart figure with price panel + optional oscillator rows.
 
-    ``df`` should be the FULL OHLCV history; ``initial_range`` controls
-    which slice is visible on first render. Users can drag the chart
-    axes/area to zoom & pan freely beyond that initial range.
+    ``df`` should be the plotted OHLCV window plus enough warmup bars for
+    indicators. Keeping it bounded avoids sending years of unused points to
+    Plotly on every rerun.
 
     The oscillator panels (出来高 / MACD / ヒストリカル PER) are each
     optional and rendered in the order enabled. Row heights are
@@ -1630,6 +1164,8 @@ def build_figure(
         oscillators.append(("volume", "出来高"))
     if show_macd:
         oscillators.append(("macd", "MACD"))
+    if show_rsi:
+        oscillators.append(("rsi", "RSI"))
     if has_per:
         per_title = "ヒストリカル PER"
         if per_source:
@@ -1930,6 +1466,22 @@ def build_figure(
             row=mrow, col=1,
         )
 
+    # --- RSI row -----------------------------------------------------------
+    if "rsi" in osc_rows:
+        rrow = osc_rows["rsi"]
+        rsi_series = rsi(close)
+        fig.add_trace(
+            go.Scatter(
+                x=df.index, y=rsi_series, name="RSI",
+                line=dict(color=THEME["shu_deep"], width=1.2),
+                showlegend=False,
+            ),
+            row=rrow, col=1,
+        )
+        fig.add_hline(y=70, line_dash="dash", line_color=THEME["ink_muted"], line_width=1, row=rrow, col=1)
+        fig.add_hline(y=30, line_dash="dash", line_color=THEME["ink_muted"], line_width=1, row=rrow, col=1)
+        fig.update_yaxes(range=[0, 100], row=rrow, col=1)
+
     # --- Historical PER row -------------------------------------------------
     if "per" in osc_rows:
         prow = osc_rows["per"]
@@ -2038,10 +1590,8 @@ def build_figure(
     )
     # Hide gaps in the data so the chart reads as a continuous series.
     # Strategy depends on the bar interval:
-    #   - 1d:  list every missing calendar day explicitly (weekends AND
-    #          Japanese holidays AND individual suspensions). Bounds-based
-    #          weekend hiding alone leaves visible holes on holidays.
-    #   - 1wk: no rangebreaks — weekly bars are already contiguous.
+    #   - 1d:  list every missing calendar day explicitly
+    #   - 1wk: detect gaps > 7 days and explicitly hide the missing weeks
     rangebreaks: list[dict] = []
     if interval == "1d":
         all_days = pd.date_range(df.index[0], df.index[-1], freq="D")
@@ -2050,11 +1600,23 @@ def build_figure(
             rangebreaks.append(
                 dict(values=[d.strftime("%Y-%m-%d") for d in missing])
             )
+    elif interval == "1wk":
+        missing_weeks = []
+        for i in range(1, len(df)):
+            delta = df.index[i] - df.index[i-1]
+            if delta.days > 7:
+                gap_dates = pd.date_range(df.index[i-1] + pd.Timedelta(days=7), df.index[i] - pd.Timedelta(days=1), freq="7D")
+                missing_weeks.extend([d.strftime("%Y-%m-%d") for d in gap_dates])
+        if missing_weeks:
+            rangebreaks.append(
+                dict(values=missing_weeks, dvalue=7 * 86400000)
+            )
+    
     xaxis_kwargs: dict = {"rangebreaks": rangebreaks}
     if initial_range is not None:
         xaxis_kwargs["range"] = list(initial_range)
     fig.update_xaxes(**xaxis_kwargs)
-    return fig
+    return fig, osc_rows
 
 
 # ---------------------------------------------------------------------------
@@ -2082,125 +1644,698 @@ def _display_name_for(ticker: str, name_lookup: dict[str, str]) -> str:
     return fetched or ticker
 
 
-# ---------------------------------------------------------------------------
-# Ticker selection sidebar
-# ---------------------------------------------------------------------------
-def _select_ticker(name_lookup: dict[str, str]) -> str | None:
-    """Sidebar UI for choosing a ticker. Returns ticker symbol or None."""
-    mode = st.sidebar.radio(
-        "銘柄ソース",
-        ["日経225", "指数", "お気に入り", "直接入力"],
-        horizontal=True,
+def _render_ticker_panel(name_lookup: dict[str, str]) -> None:
+    """Render the resizable right-side ticker picker."""
+    import html as _html
+
+    favs = load_favorites()
+    selected = st.session_state.get("selected_ticker", get_default_ticker())
+    all_codes = sorted(
+        set([code for code, _, _ in UNIVERSE])
+        | set([code for code, _ in INDICES])
+        | set(favs.keys())
+        | {selected}
     )
-
-    ticker: str | None = None
-
-    if mode == "日経225":
-        # Build a flat selectbox list where each sector is introduced by
-        # a visual "header" row (── 電機 ──) that the user cannot pick as a
-        # ticker. UNIVERSE is already sector-ordered, so we can detect
-        # sector boundaries by watching the sector field change.
-        items: list[tuple[str, str | None]] = []  # (display_label, value-or-None)
-        prev_sector: str | None = None
-        for code, nm, sector in UNIVERSE:
-            if sector != prev_sector:
-                items.append((f"── {sector} ──", None))
-                prev_sector = sector
-            items.append((f"    {code}  {nm}", code))
-
-        # Default to whichever row Toyota lives on
-        default_idx = next(
-            (i for i, (_lbl, val) in enumerate(items) if val == "7203.T"),
-            1,  # fallback: first real ticker (0 is a header)
+    # Quotes in the ticker panel are a startup snapshot.  Streamlit reruns the
+    # script whenever the chart ticker changes, so keep the first values in
+    # session state instead of rebuilding the quote set for the new ticker.
+    if "_ticker_panel_price_snapshot" not in st.session_state:
+        st.session_state["_ticker_panel_price_snapshot"] = _fetch_last_prices(
+            tuple(all_codes)
         )
-        choice_idx = st.sidebar.selectbox(
-            "銘柄",
-            options=range(len(items)),
-            format_func=lambda i: items[i][0],
-            index=default_idx,
-            key="nikkei225_pick_idx",
+    prices = st.session_state["_ticker_panel_price_snapshot"]
+    selected_name = _html.escape(_display_name_for(selected, name_lookup))
+    safe_selected = _html.escape(selected)
+    selected_is_fav = selected in favs
+    fav_action = "remove" if selected_is_fav else "add"
+    fav_label = "⭐ お気に入りから外す" if selected_is_fav else "☆ お気に入りに追加"
+
+    def _row(code: str, name: str) -> str:
+        p = prices.get(code, {})
+        last = p.get("last")
+        pct = p.get("pct")
+        is_jp = code.endswith(".T") or code.isdigit()
+        if last is None:
+            price_html = "&mdash;"
+            pct_html = '<span class="rp-flat">&mdash;</span>'
+        else:
+            price_html = f"&yen;{last:,.0f}" if is_jp else f"{last:,.2f}"
+            pct_val = float(pct or 0.0)
+            if pct_val > 0:
+                pct_html = f'<span class="rp-up">▲{pct_val:.2f}%</span>'
+            elif pct_val < 0:
+                pct_html = f'<span class="rp-down">▼{abs(pct_val):.2f}%</span>'
+            else:
+                pct_html = '<span class="rp-flat">0.00%</span>'
+
+        safe_code = _html.escape(code)
+        safe_name = _html.escape(name or name_lookup.get(code, code))
+        active = " is-active" if code == selected else ""
+        return (
+            f'<button type="button" class="rp-row{active}" onclick="pickTicker(\'{safe_code}\')">'
+            f'<span class="rp-main"><span class="rp-code">{safe_code}</span>'
+            f'<span class="rp-name">{safe_name}</span></span>'
+            f'<span class="rp-quote"><span class="rp-price">{price_html}</span>{pct_html}</span>'
+            f'</button>'
         )
-        chosen = items[choice_idx][1]
-        if chosen is None:
-            # User clicked on a section header — these aren't real tickers.
-            # Remember the last valid pick in session_state so the chart
-            # doesn't blank out when this happens.
-            st.sidebar.caption(
-                "※ 業種名の行は選択できません。銘柄行を選んでください。"
-            )
-            ticker = st.session_state.get("nikkei225_last_ticker", "7203.T")
-        else:
-            ticker = chosen
-            st.session_state["nikkei225_last_ticker"] = ticker
 
-    elif mode == "指数":
-        opts = {f"{code}  {n}": code for code, n in INDICES}
-        label = st.sidebar.selectbox("指数", list(opts.keys()), index=0)
-        ticker = opts[label]
+    nikkei_rows: list[str] = []
+    prev_sector: str | None = None
+    for code, name, sector in UNIVERSE:
+        if sector != prev_sector:
+            nikkei_rows.append(f'<div class="rp-sector">{_html.escape(sector)}</div>')
+            prev_sector = sector
+        nikkei_rows.append(_row(code, name))
 
-    elif mode == "お気に入り":
-        favs = load_favorites()
-        if not favs:
-            st.sidebar.info(
-                "お気に入りはまだありません。他のモードで銘柄を選び、"
-                "「⭐ お気に入りに追加」ボタンで登録してください。"
-            )
-        else:
-            # Resolve a display name for every favorite. Order of preference:
-            #   1) the name already stored in favorites.json
-            #   2) built-in Nikkei225 / INDICES lookup
-            #   3) yfinance (via _display_name_for → cached for a week)
-            # When (3) fires we also write the result back to favorites.json
-            # so subsequent sessions don't need the yfinance round-trip.
-            opts: dict[str, str] = {}
-            dirty = False
-            for t, stored_name in favs.items():
-                if stored_name:
-                    display_name = stored_name
-                else:
-                    display_name = _display_name_for(t, name_lookup)
-                    if display_name and display_name != t:
-                        favs[t] = display_name
-                        dirty = True
-                label_text = (
-                    f"{t}  {display_name}" if display_name and display_name != t
-                    else t
-                )
-                opts[label_text] = t
-            if dirty:
-                save_favorites(favs)
-            label = st.sidebar.selectbox("お気に入り", list(opts.keys()))
-            ticker = opts[label]
+    index_rows = [_row(code, name) for code, name in INDICES]
+    if favs:
+        favorite_rows = [
+            _row(code, stored_name or name_lookup.get(code, code))
+            for code, stored_name in favs.items()
+        ]
+    else:
+        favorite_rows = ['<div class="rp-empty">お気に入りはまだありません</div>']
 
-    else:  # 直接入力
-        raw = st.sidebar.text_input(
-            "ティッカー (例: 7203, 6758.T, ^N225)",
-            value="",
-            help="4 桁コードだけ入力すると .T を自動付与します。"
-            " 指数や米国株は yfinance 形式でそのまま入力してください。",
-        )
-        if raw.strip():
-            ticker = normalise_ticker(raw)
+    panel_html = f"""
+<style>
+#rightTickerPanel {{
+    position: fixed;
+    top: 0;
+    right: 14px;
+    width: 300px;
+    min-width: 220px;
+    max-width: 52vw;
+    height: 100vh;
+    z-index: 9999;
+    display: flex;
+    background: rgba(15, 23, 42, 0.98);
+    border-left: 1px solid rgba(148, 163, 184, 0.22);
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.32);
+    color: #e2e8f0;
+    font-family: "IBM Plex Sans JP", "Hiragino Sans", sans-serif;
+}}
+#rightTickerHandle {{
+    width: 7px;
+    flex: 0 0 7px;
+    cursor: ew-resize;
+    position: relative;
+}}
+#rightTickerHandle:hover,
+#rightTickerHandle.is-dragging {{
+    background: rgba(56, 189, 248, 0.26);
+}}
+#rightTickerHandle::after {{
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: calc(50% - 24px);
+    width: 3px;
+    height: 48px;
+    border-radius: 999px;
+    background: rgba(226, 232, 240, 0.24);
+}}
+.rp-inner {{
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}}
+.rp-title {{
+    padding: 64px 12px 10px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: #cbd5e1;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}}
+.rp-favbar {{
+    padding: 8px 10px 10px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+    background: rgba(2, 6, 23, 0.18);
+}}
+.rp-selected {{
+    min-width: 0;
+    margin-bottom: 7px;
+}}
+.rp-selected-code {{
+    display: block;
+    color: #f8fafc;
+    font-family: "IBM Plex Mono", Menlo, monospace;
+    font-size: 0.78rem;
+    font-weight: 700;
+}}
+.rp-selected-name {{
+    display: block;
+    color: #94a3b8;
+    font-size: 0.68rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}}
+.rp-favbtn {{
+    width: 100%;
+    border: 1px solid rgba(251, 191, 36, 0.45);
+    border-radius: 4px;
+    background: rgba(251, 191, 36, 0.10);
+    color: #fde68a;
+    cursor: pointer;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 7px 8px;
+    text-align: center;
+}}
+.rp-favbtn:hover {{
+    background: rgba(251, 191, 36, 0.18);
+    border-color: rgba(251, 191, 36, 0.75);
+}}
+.rp-tabs {{
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    padding: 8px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}}
+.rp-tab {{
+    min-width: 0;
+    border: 1px solid rgba(148, 163, 184, 0.20);
+    border-radius: 4px;
+    background: rgba(30, 41, 59, 0.65);
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 6px 3px;
+    white-space: nowrap;
+}}
+.rp-tab:hover {{
+    color: #e2e8f0;
+    border-color: rgba(56, 189, 248, 0.42);
+}}
+.rp-tab.is-active {{
+    color: #0f172a;
+    background: #38bdf8;
+    border-color: #38bdf8;
+}}
+.rp-scroll {{
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-bottom: 16px;
+}}
+.rp-scroll::-webkit-scrollbar {{ width: 6px; }}
+.rp-scroll::-webkit-scrollbar-thumb {{
+    background: rgba(148, 163, 184, 0.30);
+    border-radius: 999px;
+}}
+.rp-sector {{
+    padding: 10px 12px 4px;
+    color: #64748b;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    background: rgba(2, 6, 23, 0.25);
+}}
+.rp-row {{
+    width: 100%;
+    border: 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.10);
+    background: transparent;
+    color: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    cursor: pointer;
+    text-align: left;
+}}
+.rp-row:hover {{
+    background: rgba(56, 189, 248, 0.08);
+}}
+.rp-row.is-active {{
+    background: rgba(56, 189, 248, 0.16);
+    box-shadow: inset 3px 0 0 #38bdf8;
+}}
+.rp-main {{
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}}
+.rp-code {{
+    color: #f8fafc;
+    font-family: "IBM Plex Mono", Menlo, monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+}}
+.rp-name {{
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #94a3b8;
+    font-size: 0.68rem;
+}}
+.rp-quote {{
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    font-family: "IBM Plex Mono", Menlo, monospace;
+}}
+.rp-price {{
+    color: #cbd5e1;
+    font-size: 0.72rem;
+}}
+.rp-up, .rp-down, .rp-flat {{
+    font-size: 0.66rem;
+    font-weight: 700;
+}}
+.rp-up {{ color: #34d399; }}
+.rp-down {{ color: #fb7185; }}
+.rp-flat {{ color: #64748b; }}
+.rp-empty {{
+    color: #64748b;
+    font-size: 0.78rem;
+    padding: 24px 12px;
+    text-align: center;
+}}
+.rp-direct {{
+    padding: 10px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px;
+}}
+.rp-direct input {{
+    min-width: 0;
+    border: 1px solid rgba(148, 163, 184, 0.26);
+    border-radius: 4px;
+    background: rgba(2, 6, 23, 0.34);
+    color: #e2e8f0;
+    padding: 7px 8px;
+    font-size: 0.78rem;
+}}
+.rp-direct button {{
+    border: 1px solid #38bdf8;
+    border-radius: 4px;
+    background: #38bdf8;
+    color: #0f172a;
+    padding: 0 10px;
+    cursor: pointer;
+    font-weight: 700;
+}}
+.rp-hint {{
+    padding: 0 10px 8px;
+    color: #64748b;
+    font-size: 0.68rem;
+}}
+:root {{
+    --rightTickerReserved: 334px;
+}}
+html,
+body,
+.stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+section.main {{
+    overflow-y: auto !important;
+}}
+[data-testid="stAppViewContainer"] {{
+    padding-right: var(--rightTickerReserved) !important;
+    box-sizing: border-box !important;
+}}
+[data-testid="stAppViewContainer"] > .main,
+[data-testid="stMain"],
+section.main {{
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}}
+.main .block-container,
+[data-testid="stMainBlockContainer"],
+[data-testid="stAppViewBlockContainer"] {{
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}}
+@media (max-width: 900px) {{
+    #rightTickerPanel {{
+        position: relative;
+        width: 100% !important;
+        max-width: none;
+        height: 48vh;
+        margin-bottom: 16px;
+    }}
+    #rightTickerHandle {{ display: none; }}
+    :root {{
+        --rightTickerReserved: 0px;
+    }}
+    [data-testid="stAppViewContainer"] {{
+        padding-right: 0 !important;
+    }}
+}}
+</style>
+<div id="rightTickerPanel" data-server-ticker="{safe_selected}" data-server-favorite="{int(selected_is_fav)}">
+  <div id="rightTickerHandle"></div>
+  <div class="rp-inner">
+    <div class="rp-title">銘柄選択</div>
+    <div class="rp-favbar">
+      <div class="rp-selected">
+        <span class="rp-selected-code">{safe_selected}</span>
+        <span class="rp-selected-name">{selected_name}</span>
+      </div>
+      <button type="button" class="rp-favbtn" onclick="toggleFavorite('{safe_selected}', '{fav_action}', this)">{fav_label}</button>
+    </div>
+    <div class="rp-tabs">
+      <button type="button" class="rp-tab is-active" onclick="switchTickerTab('nikkei', this)">日経225</button>
+      <button type="button" class="rp-tab" onclick="switchTickerTab('index', this)">指数</button>
+      <button type="button" class="rp-tab" onclick="switchTickerTab('favorite', this)">お気に入り</button>
+      <button type="button" class="rp-tab" onclick="switchTickerTab('direct', this)">直接入力</button>
+    </div>
+    <div class="rp-scroll">
+      <div id="rp-tab-nikkei">{''.join(nikkei_rows)}</div>
+      <div id="rp-tab-index" style="display:none">{''.join(index_rows)}</div>
+      <div id="rp-tab-favorite" style="display:none">{''.join(favorite_rows)}</div>
+      <div id="rp-tab-direct" style="display:none">
+        <div class="rp-direct">
+          <input id="rpDirectInput" placeholder="7203, 6758.T, ^N225, AAPL" oninput="updateDirectResult()" onkeydown="directTickerKey(event)">
+          <button type="button" onclick="pickDirectTicker()">表示</button>
+        </div>
+        <div class="rp-hint">4桁コードは .T を自動付与します。</div>
+        <div id="rpDirectResult" class="rp-empty">ティッカーを入力してください</div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function() {{
+  function normalizeTicker(raw) {{
+    var code = (raw || '').trim().toUpperCase();
+    if (/^[0-9]{{4}}$/.test(code)) code = code + '.T';
+    return code;
+  }}
 
-    # Favorite add/remove button
-    if ticker:
-        st.sidebar.markdown("---")
-        favs = load_favorites()
-        if ticker in favs:
-            if st.sidebar.button(f"⭐ お気に入りから外す ({ticker})"):
-                remove_favorite(ticker)
-                st.rerun()
-        else:
-            if st.sidebar.button(f"☆ お気に入りに追加 ({ticker})"):
-                # Resolve name: built-in lookup first, then yfinance
-                display_name = name_lookup.get(ticker, "")
-                if not display_name:
-                    with st.spinner(f"{ticker} の銘柄名を取得中..."):
-                        display_name = get_ticker_name(ticker) or ""
-                add_favorite(ticker, display_name)
-                st.rerun()
+  window.pickTicker = function(code) {{
+    code = normalizeTicker(code);
+    if (!code) return;
+    // Give immediate visual feedback while Streamlit prepares the new chart.
+    var pickedName = code;
+    document.querySelectorAll('.rp-row').forEach(function(row) {{
+      var rowCode = row.querySelector('.rp-code');
+      var active = !!rowCode && rowCode.textContent.trim() === code;
+      row.classList.toggle('is-active', active);
+      if (active) {{
+        var rowName = row.querySelector('.rp-name');
+        if (rowName) pickedName = rowName.textContent.trim();
+      }}
+    }});
+    var selectedCode = document.querySelector('.rp-selected-code');
+    var selectedName = document.querySelector('.rp-selected-name');
+    if (selectedCode) selectedCode.textContent = code;
+    if (selectedName) selectedName.textContent = pickedName;
+    var url = new URL(window.parent.location.href);
+    url.searchParams.set('ticker', code);
+    window.parent.history.replaceState({{}}, '', url.toString());
+    sendTickerEvent({{type: 'select', code: code}}, url.toString());
+  }};
 
-    return ticker
+  window.toggleFavorite = function(code, action, button) {{
+    code = normalizeTicker(code);
+    if (!code) return;
+    var favoriteTab = document.getElementById('rp-tab-favorite');
+    var matchingRows = Array.from(document.querySelectorAll('.rp-row')).filter(function(row) {{
+      var rowCode = row.querySelector('.rp-code');
+      return !!rowCode && rowCode.textContent.trim() === code;
+    }});
+    if (action === 'add') {{
+      if (button) {{
+        button.textContent = '⭐ お気に入りから外す';
+        button.setAttribute('onclick', "toggleFavorite('" + code + "', 'remove', this)");
+      }}
+      if (favoriteTab && !matchingRows.some(function(row) {{ return row.parentElement === favoriteTab; }})) {{
+        var sourceRow = matchingRows.length ? matchingRows[0] : null;
+        var emptyMessage = favoriteTab.querySelector('.rp-empty');
+        if (emptyMessage) emptyMessage.remove();
+        if (sourceRow) favoriteTab.appendChild(sourceRow.cloneNode(true));
+      }}
+    }} else if (action === 'remove') {{
+      if (button) {{
+        button.textContent = '☆ お気に入りに追加';
+        button.setAttribute('onclick', "toggleFavorite('" + code + "', 'add', this)");
+      }}
+      if (favoriteTab) {{
+        Array.from(favoriteTab.querySelectorAll('.rp-row')).forEach(function(row) {{
+          var rowCode = row.querySelector('.rp-code');
+          if (rowCode && rowCode.textContent.trim() === code) row.remove();
+        }});
+        if (!favoriteTab.querySelector('.rp-row')) {{
+          favoriteTab.innerHTML = '<div class="rp-empty">お気に入りはまだありません</div>';
+        }}
+      }}
+    }}
+    var url = new URL(window.parent.location.href);
+    url.searchParams.set('ticker', code);
+    url.searchParams.set('fav_ticker', code);
+    url.searchParams.set('fav_action', action);
+    sendTickerEvent({{type: 'favorite', code: code, action: action}}, url.toString());
+  }};
+
+  function sendTickerEvent(payload, fallbackUrl) {{
+    var input = window.parent.document.querySelector(
+      'input[aria-label="ticker-panel-event"]'
+    );
+    if (!input) return;
+    payload.nonce = Date.now();
+    var value = JSON.stringify(payload);
+    var setter = Object.getOwnPropertyDescriptor(
+      window.parent.HTMLInputElement.prototype, 'value'
+    ).set;
+    input.focus();
+    setter.call(input, value);
+    input.dispatchEvent(new Event('input', {{bubbles: true}}));
+    input.dispatchEvent(new Event('change', {{bubbles: true}}));
+    input.dispatchEvent(new KeyboardEvent('keydown', {{
+      key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true
+    }}));
+    input.blur();
+
+    // Some browser/Streamlit combinations ignore programmatic key events on
+    // hidden inputs. Fall back to navigation only if the in-app update did
+    // not replace the selected ticker within a generous interval.
+    setTimeout(function() {{
+      var panel = document.getElementById('rightTickerPanel');
+      var acknowledged = !!panel && panel.dataset.serverTicker === payload.code;
+      if (acknowledged && payload.type === 'favorite') {{
+        var expectedFavorite = payload.action === 'add' ? '1' : '0';
+        acknowledged = panel.dataset.serverFavorite === expectedFavorite;
+      }}
+      if (!acknowledged) {{
+        window.parent.location.href = fallbackUrl;
+      }}
+    }}, 5000);
+  }}
+
+  window.pickDirectTicker = function() {{
+    var input = document.getElementById('rpDirectInput');
+    window.pickTicker(input ? input.value : '');
+  }};
+
+  window.updateDirectResult = function() {{
+    var input = document.getElementById('rpDirectInput');
+    var result = document.getElementById('rpDirectResult');
+    var code = normalizeTicker(input ? input.value : '');
+    if (!result) return;
+    if (!code) {{
+      result.className = 'rp-empty';
+      result.innerHTML = 'ティッカーを入力してください';
+      return;
+    }}
+    result.className = 'rp-row';
+    result.setAttribute('onclick', "pickTicker('" + code.replace(/'/g, "\\\\'") + "')");
+    result.innerHTML =
+      '<span class="rp-main"><span class="rp-code">' + code + '</span>' +
+      '<span class="rp-name">直接入力</span></span>' +
+      '<span class="rp-quote"><span class="rp-price">表示</span></span>';
+  }};
+
+  window.directTickerKey = function(event) {{
+    if (event.key === 'Enter') {{
+      event.preventDefault();
+      window.pickDirectTicker();
+    }}
+  }};
+
+  window.switchTickerTab = function(tab, btn) {{
+    ['nikkei', 'index', 'favorite', 'direct'].forEach(function(name) {{
+      var el = document.getElementById('rp-tab-' + name);
+      if (el) el.style.display = name === tab ? 'block' : 'none';
+    }});
+    document.querySelectorAll('.rp-tab').forEach(function(el) {{
+      el.classList.remove('is-active');
+    }});
+    btn.classList.add('is-active');
+    try {{ localStorage.setItem('rightTickerActiveTab', tab); }} catch (e) {{}}
+    if (tab === 'direct') {{
+      setTimeout(function() {{
+        var input = document.getElementById('rpDirectInput');
+        if (input) input.focus();
+      }}, 20);
+    }}
+  }};
+
+  var panel = document.getElementById('rightTickerPanel');
+  var handle = document.getElementById('rightTickerHandle');
+  var panelRightGap = 14;
+  var startX = 0;
+  var startWidth = 0;
+  var dragging = false;
+
+  var scrollArea = panel.querySelector('.rp-scroll');
+  if (scrollArea) {{
+    try {{
+      scrollArea.scrollTop = parseInt(
+        localStorage.getItem('rightTickerScrollTop') || '0', 10
+      );
+    }} catch (e) {{}}
+    scrollArea.addEventListener('scroll', function() {{
+      try {{ localStorage.setItem('rightTickerScrollTop', String(scrollArea.scrollTop)); }} catch (e) {{}}
+    }}, {{passive: true}});
+  }}
+
+  try {{
+    var activeTab = localStorage.getItem('rightTickerActiveTab') || 'nikkei';
+    var activeButton = Array.from(document.querySelectorAll('.rp-tab')).find(function(btn) {{
+      return (btn.getAttribute('onclick') || '').indexOf("'" + activeTab + "'") !== -1;
+    }});
+    if (activeButton) window.switchTickerTab(activeTab, activeButton);
+  }} catch (e) {{}}
+
+  function applyWidth(width) {{
+    var clamped = Math.min(Math.max(width, 220), window.innerWidth * 0.52);
+    panel.style.width = clamped + 'px';
+    panel.style.right = panelRightGap + 'px';
+    var reserved = clamped + panelRightGap + 20;
+    document.documentElement.style.setProperty('--rightTickerReserved', reserved + 'px');
+    document.querySelectorAll('html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"], section.main').forEach(function(el) {{
+      el.style.overflowY = 'auto';
+    }});
+    document.querySelectorAll('[data-testid="stAppViewContainer"]').forEach(function(el) {{
+      el.style.paddingRight = reserved + 'px';
+      el.style.boxSizing = 'border-box';
+    }});
+    document.querySelectorAll('[data-testid="stAppViewContainer"] > .main, [data-testid="stMain"], section.main').forEach(function(el) {{
+      el.style.width = '100%';
+      el.style.maxWidth = '100%';
+      el.style.boxSizing = 'border-box';
+    }});
+    document.querySelectorAll('.main .block-container, [data-testid="stMainBlockContainer"], [data-testid="stAppViewBlockContainer"]').forEach(function(el) {{
+      el.style.maxWidth = '100%';
+      el.style.width = '100%';
+      el.style.boxSizing = 'border-box';
+    }});
+    if (window.innerWidth <= 900) {{
+      document.documentElement.style.setProperty('--rightTickerReserved', '0px');
+      document.querySelectorAll('[data-testid="stAppViewContainer"]').forEach(function(el) {{
+        el.style.paddingRight = '0px';
+      }});
+    }}
+    setTimeout(function() {{
+      window.dispatchEvent(new Event('resize'));
+    }}, 30);
+    try {{ localStorage.setItem('rightTickerPanelWidth', String(clamped)); }} catch (e) {{}}
+  }}
+
+  try {{
+    var saved = parseInt(localStorage.getItem('rightTickerPanelWidth') || '', 10);
+    applyWidth(saved || panel.offsetWidth || 300);
+  }} catch (e) {{}}
+
+  handle.addEventListener('mousedown', function(event) {{
+    dragging = true;
+    startX = event.clientX;
+    startWidth = panel.offsetWidth;
+    handle.classList.add('is-dragging');
+    document.body.style.userSelect = 'none';
+    event.preventDefault();
+  }});
+  document.addEventListener('mousemove', function(event) {{
+    if (!dragging) return;
+    applyWidth(startWidth + (startX - event.clientX));
+  }});
+  document.addEventListener('mouseup', function() {{
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('is-dragging');
+    document.body.style.userSelect = '';
+  }});
+}})();
+</script>
+"""
+    html_part, script_part = panel_html.split("<script>", 1)
+    script_body = script_part.rsplit("</script>", 1)[0]
+    injector_html = f"""
+<script>
+(function() {{
+  const doc = window.parent.document;
+  const html = {json.dumps(html_part, ensure_ascii=False)};
+  const scriptBody = {json.dumps(script_body, ensure_ascii=False)};
+
+  const existingPanel = doc.getElementById('rightTickerPanel');
+  const existingStyle = doc.getElementById('rightTickerPanelStyle');
+  if (existingStyle) existingStyle.remove();
+
+  const template = doc.createElement('template');
+  template.innerHTML = html.trim();
+
+  const style = template.content.querySelector('style');
+  if (style) {{
+    style.id = 'rightTickerPanelStyle';
+    doc.head.appendChild(style);
+  }}
+
+  const panel = template.content.querySelector('#rightTickerPanel');
+  if (existingPanel && panel) {{
+    // Keep the tab DOM, scroll position, and listeners alive. Only the pieces
+    // that can change after a ticker/favorite action are synchronized.
+    const nextSelected = panel.querySelector('.rp-selected');
+    const currentSelected = existingPanel.querySelector('.rp-selected');
+    if (nextSelected && currentSelected) currentSelected.innerHTML = nextSelected.innerHTML;
+    existingPanel.dataset.serverTicker = panel.dataset.serverTicker || '';
+    existingPanel.dataset.serverFavorite = panel.dataset.serverFavorite || '0';
+
+    const nextFavButton = panel.querySelector('.rp-favbtn');
+    const currentFavButton = existingPanel.querySelector('.rp-favbtn');
+    if (nextFavButton && currentFavButton) {{
+      currentFavButton.textContent = nextFavButton.textContent;
+      currentFavButton.setAttribute('onclick', nextFavButton.getAttribute('onclick'));
+    }}
+
+    const nextFavoriteRows = panel.querySelector('#rp-tab-favorite');
+    const currentFavoriteRows = existingPanel.querySelector('#rp-tab-favorite');
+    if (nextFavoriteRows && currentFavoriteRows) {{
+      currentFavoriteRows.innerHTML = nextFavoriteRows.innerHTML;
+    }}
+
+    const selectedCode = {json.dumps(safe_selected)};
+    existingPanel.querySelectorAll('.rp-row').forEach(function(row) {{
+      const code = row.querySelector('.rp-code');
+      row.classList.toggle('is-active', !!code && code.textContent.trim() === selectedCode);
+    }});
+  }} else if (panel) {{
+    doc.body.appendChild(panel);
+  }}
+
+  if (!existingPanel) {{
+    const script = doc.createElement('script');
+    script.text = scriptBody;
+    doc.body.appendChild(script);
+    setTimeout(function() {{ script.remove(); }}, 0);
+  }}
+}})();
+</script>
+"""
+    components.html(injector_html, height=0, width=0)
 
 
 # ---------------------------------------------------------------------------
@@ -2212,14 +2347,6 @@ def main() -> None:
         layout="wide",
         initial_sidebar_state="expanded",
     )
-    # Check if we should pull latest settings from Git repository (run once per session)
-    if "git_pulled" not in st.session_state:
-        try:
-            from git_utils import git_pull
-            git_pull()
-        except Exception:
-            pass
-        st.session_state.git_pulled = True
     # Inject the 京都ターミナル theme (see skills.md / frontend-design skill):
     # loads Google Fonts + CSS variables + Streamlit component overrides.
     # Must run before any other Streamlit widget so styles apply on first paint.
@@ -2262,16 +2389,120 @@ def main() -> None:
     )
 
     if app_mode == "通知設定":
+        st.markdown(
+            """
+            <style>
+            .kt-masthead { display: none !important; }
+            [data-testid="stAppViewContainer"] {
+                padding-right: 0 !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        components.html(
+            """
+            <script>
+            (function() {
+              const doc = window.parent.document;
+              const panel = doc.getElementById('rightTickerPanel');
+              const style = doc.getElementById('rightTickerPanelStyle');
+              if (panel) panel.remove();
+              if (style) style.remove();
+              doc.documentElement.style.setProperty('--rightTickerReserved', '0px');
+              doc.querySelectorAll('[data-testid="stAppViewContainer"]').forEach(function(el) {
+                el.style.paddingRight = '0px';
+              });
+            })();
+            </script>
+            """,
+            height=0,
+            width=0,
+        )
         from notification_ui import show_notification_ui
         show_notification_ui(name_lookup)
         return
 
-    # ----- Sidebar: ticker selection ---------------------------------------
-    st.sidebar.header("銘柄選択")
-    ticker = _select_ticker(name_lookup)
-    if not ticker:
-        st.info("サイドバーで銘柄を選択してください。")
-        return
+    # ----- Right panel: ticker selection -----------------------------------
+    qp_ticker = st.query_params.get("ticker", "")
+    if qp_ticker and st.session_state.get("_applied_query_ticker") != qp_ticker:
+        st.session_state["selected_ticker"] = normalise_ticker(qp_ticker)
+        st.session_state["_applied_query_ticker"] = qp_ticker
+    if "selected_ticker" not in st.session_state or not st.session_state["selected_ticker"]:
+        st.session_state["selected_ticker"] = get_default_ticker()
+
+    # The custom ticker panel writes to this hidden Streamlit input.  This
+    # triggers an in-app rerun without reloading the browser page or rebuilding
+    # the user's tab/navigation context.
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stTextInput"]:has(input[aria-label="ticker-panel-event"]) {
+            position: fixed;
+            left: -10000px;
+            top: 0;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            opacity: 0;
+            pointer-events: none;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    panel_event_raw = st.text_input(
+        "ticker-panel-event",
+        key="_ticker_panel_event",
+        label_visibility="collapsed",
+    )
+    if panel_event_raw:
+        try:
+            panel_event = json.loads(panel_event_raw)
+        except (TypeError, json.JSONDecodeError):
+            panel_event = {}
+        event_nonce = panel_event.get("nonce")
+        if event_nonce and event_nonce != st.session_state.get("_ticker_panel_event_nonce"):
+            st.session_state["_ticker_panel_event_nonce"] = event_nonce
+            event_ticker = normalise_ticker(panel_event.get("code", ""))
+            if event_ticker:
+                st.session_state["selected_ticker"] = event_ticker
+                st.session_state["_applied_query_ticker"] = event_ticker
+                if panel_event.get("type") == "favorite":
+                    if panel_event.get("action") == "remove":
+                        sync_favorite_and_notifications(
+                            event_ticker, "", remove=True,
+                        )
+                    elif panel_event.get("action") == "add":
+                        display_name = name_lookup.get(event_ticker, "")
+                        if not display_name:
+                            display_name = get_ticker_name(event_ticker) or ""
+                        sync_favorite_and_notifications(
+                            event_ticker, display_name,
+                        )
+
+    fav_action = st.query_params.get("fav_action", "")
+    fav_ticker = normalise_ticker(st.query_params.get("fav_ticker", ""))
+    if fav_action in {"add", "remove"} and fav_ticker:
+        st.session_state["selected_ticker"] = fav_ticker
+        if fav_action == "remove":
+            sync_favorite_and_notifications(fav_ticker, "", remove=True)
+        else:
+            display_name = name_lookup.get(fav_ticker, "")
+            if not display_name:
+                display_name = get_ticker_name(fav_ticker) or ""
+            sync_favorite_and_notifications(fav_ticker, display_name)
+        st.query_params["ticker"] = fav_ticker
+        if "fav_action" in st.query_params:
+            del st.query_params["fav_action"]
+        if "fav_ticker" in st.query_params:
+            del st.query_params["fav_ticker"]
+        st.rerun()
+
+    _render_ticker_panel(name_lookup)
+
+    ticker = st.session_state["selected_ticker"]
+    st.sidebar.caption(f"選択中の銘柄: {ticker}")
 
     # ----- Sidebar: bar interval ------------------------------------------
     # Drives data-loader interval + which tuned-params file we read.
@@ -2361,24 +2592,23 @@ def main() -> None:
         show_sma200 = st.checkbox("SMA200", value=False)
         show_ichimoku = st.checkbox("一目均衡表", value=False)
         # Master trendline toggle: when OFF, none of the detected lines are
-        # drawn regardless of the per-kind checkboxes below. Useful for
-        # looking at a clean candlestick view without any overlays.
+        # drawn unless a specific kind is selected below. Turning it ON shows
+        # every kind, while each child checkbox also works independently.
         show_trendlines = st.checkbox("🔺 トレンドラインを表示", value=False)
-        show_support = (
-            st.checkbox("🟢 サポート", value=False) and show_trendlines
-        )
-        show_resistance = (
-            st.checkbox("🔴 レジスタンス", value=False) and show_trendlines
-        )
-        show_trend_up = (
-            st.checkbox("🔵 上昇トレンド", value=False) and show_trendlines
-        )
-        show_trend_down = (
-            st.checkbox("🟠 下降トレンド", value=False) and show_trendlines
+        show_support = st.checkbox("🟢 サポート", value=False) or show_trendlines
+        show_resistance = st.checkbox("🔴 レジスタンス", value=False) or show_trendlines
+        show_trend_up = st.checkbox("🔵 上昇トレンド", value=False) or show_trendlines
+        show_trend_down = st.checkbox("🟠 下降トレンド", value=False) or show_trendlines
+        detect_trendlines = any(
+            (show_support, show_resistance, show_trend_up, show_trend_down)
         )
 
     with st.sidebar.expander("表示切替: その他", expanded=True):
         show_ath_atl = st.checkbox("🟡 上場来高値・安値", value=False)
+
+    # Fundamentals and earnings are core content and are always displayed.
+    show_fundamentals = True
+    show_earnings = True
 
     # Validation-failed (検証NG) lines are always hidden — the UI toggle
     # used to live in the テクニカル expander but was removed per spec.
@@ -2388,6 +2618,7 @@ def main() -> None:
     with st.sidebar.expander("オシレーター", expanded=True):
         show_volume = st.checkbox("出来高", value=True)
         show_macd = st.checkbox("MACD", value=True)
+        show_rsi = st.checkbox("RSI", value=True)
         show_per_hist = st.checkbox(
             "ヒストリカル PER",
             value=False,
@@ -2416,6 +2647,8 @@ def main() -> None:
     period_bars = min(period_bars, len(df_full))
     initial_start = df_full.index[-period_bars]
     initial_end = df_full.index[-1]
+    warmup_bars = 260 if interval == "1d" else 220
+    df_plot = df_full.tail(min(len(df_full), period_bars + warmup_bars))
 
     # ----- Detection + evaluation ------------------------------------------
     # Base params override tolerance/min_touches from sidebar but keep tuned
@@ -2430,24 +2663,28 @@ def main() -> None:
         min_span_days=tuned_trend.min_span_days,
         max_last_touch_age_days=tuned_trend.max_last_touch_age_days,
     )
-    # Use cached detection to avoid O(n²) recalculation on every rerender
-    line_dicts = _cached_detect_and_evaluate(
-        _df_full_hash=_df_hash(df_full),
-        ticker=ticker,
-        interval=interval,
-        pivot_window=base_params.pivot_window,
-        tolerance_pct=tolerance_pct,
-        min_touches=min_touches,
-        max_slope_annual=max_slope_annual,
-        lookback_bars=base_params.lookback_bars,
-        max_lines_per_kind=max_lines_per_kind,
-        min_span_days=base_params.min_span_days,
-        max_last_touch_age_days=base_params.max_last_touch_age_days,
-        selected_scales=tuple(sorted(selected_scales)),
-        forward_bars=tuned_eval.forward_bars,
-        tolerance_eval=tuned_eval.tolerance_pct,
-    )
-    lines = [_dict_to_line(d) for d in line_dicts]
+    lines: list[Line] = []
+    if detect_trendlines:
+        # Use cached detection to avoid O(n²) recalculation on every rerender.
+        # When trendlines are hidden, skip this entirely; detection is the
+        # heaviest CPU path in the chart screen.
+        line_dicts = _cached_detect_and_evaluate(
+            _df_full_hash=_df_hash(df_full),
+            ticker=ticker,
+            interval=interval,
+            pivot_window=base_params.pivot_window,
+            tolerance_pct=tolerance_pct,
+            min_touches=min_touches,
+            max_slope_annual=max_slope_annual,
+            lookback_bars=base_params.lookback_bars,
+            max_lines_per_kind=max_lines_per_kind,
+            min_span_days=base_params.min_span_days,
+            max_last_touch_age_days=base_params.max_last_touch_age_days,
+            selected_scales=tuple(sorted(selected_scales)),
+            forward_bars=tuned_eval.forward_bars,
+            tolerance_eval=tuned_eval.tolerance_pct,
+        )
+        lines = [_dict_to_line(d) for d in line_dicts]
 
     # All-time high / low computed from the full cached history
     ath: tuple[float, pd.Timestamp] | None = None
@@ -2508,142 +2745,9 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    # ----- 最新データ取得日の表示 -----------------------------------------
-    # チャート / テクニカル指標は df_full の最終行 (=yfinance が返した最新
-    # バー) が基準。ファンダメンタルズは load_fundamentals の TTL=1h キャッシュ
-    # 充填時刻 (fund["fetched_at"]) が基準 — 再描画ごとに now を表示すると
-    # 実データが古いままでも「今取得」に見えてしまう。
-    fund = load_fundamentals(ticker)
-    _bar_unit = "営業日" if interval == "1d" else "週"
-    _latest_bar_str = f"{df_full.index[-1]:%Y年%m月%d日}"
-    _fetched_at = fund.get("fetched_at")
-    _fund_str = (
-        _fetched_at.strftime("%Y年%m月%d日 %H:%M")
-        if isinstance(_fetched_at, pd.Timestamp) else "—"
-    )
-    st.caption(
-        f"📅 チャート・テクニカル指標の最新{_bar_unit}: **{_latest_bar_str}**"
-        f" ／ ファンダメンタルズ取得時刻: {_fund_str} (yfinance, 1時間キャッシュ)"
-    )
-
-    # ----- Fundamentals row (PER / PBR / 配当利回り) ----------------------
-    st.markdown(
-        '''
-        <div class="kt-section-label">
-            ファンダメンタルズ — 指標
-        </div>
-        ''',
-        unsafe_allow_html=True,
-    )
-    f1, f2, f3 = st.columns(3)
-
-    # --- PER ---------------------------------------------------------------
-    # Prefer J-Quants 会社予想 EPS (the number the company itself issued
-    # in its latest 決算短信) for the displayed "PER". yfinance's
-    # ``forwardPE`` is used as a fallback for non-JP tickers and for
-    # issuers J-Quants doesn't cover. The direct yfinance number is
-    # unreliable on post-split JP stocks — e.g. 7013 IHI after its
-    # 2025-09-29 1:7 split shows ``forwardPE ≈ 5`` because yfinance
-    # failed to adjust the forecast EPS — so we compute the PER
-    # ourselves from the split-adjusted close ÷ split-adjusted forecast.
-    forecast = _latest_forecast_eps(ticker)
-    per_val: float | None = None
-    per_is_loss = False
-    if forecast is not None:
-        fcst_eps, _fcst_date, _fcst_label = forecast
-        if fcst_eps <= 0:
-            per_is_loss = True
-        else:
-            per_val = float(last) / fcst_eps
-    else:
-        # Fallback: yfinance forwardPE (non-JP or uncovered issuers).
-        yf_fwd_eps = fund.get("forward_eps")
-        yf_fwd_per = fund.get("forward_per")
-        if yf_fwd_eps is not None and yf_fwd_eps <= 0:
-            per_is_loss = True
-        elif yf_fwd_per and yf_fwd_per > 0:
-            per_val = float(yf_fwd_per)
-
-    # Custom card so the 算出基準 note can live *inside* the same white
-    # frame as the value (st.metric doesn't let us inject extra content).
-    # The .kt-metric-card CSS class mirrors stMetric styling exactly.
-    if per_is_loss:
-        per_value_html = "赤字"
-    elif per_val is not None and per_val > 0:
-        per_value_html = f"{per_val:.1f} 倍"
-    else:
-        per_value_html = "—"
-    f1.markdown(
-        f'''
-        <div class="kt-metric-card">
-          <div class="kt-metric-label">PER</div>
-          <div class="kt-metric-value">{per_value_html}</div>
-          <div class="kt-metric-note">
-            ※ 会社予想EPS基準のため他ツール (Yahoo等) と数値が異なる場合があります
-          </div>
-        </div>
-        ''',
-        unsafe_allow_html=True,
-    )
-
-    # --- PBR ---------------------------------------------------------------
-    # Uses the same .kt-metric-card class as PER so the three fundamentals
-    # cards stay height-aligned even when PER has its 算出基準 note.
-    pbr = fund.get("pbr")
-    pbr_value_html = f"{pbr:.2f} 倍" if pbr and pbr > 0 else "—"
-    f2.markdown(
-        f'''
-        <div class="kt-metric-card">
-          <div class="kt-metric-label">PBR</div>
-          <div class="kt-metric-value">{pbr_value_html}</div>
-        </div>
-        ''',
-        unsafe_allow_html=True,
-    )
-
-    # --- 配当利回り --------------------------------------------------------
-    # Compute yield ourselves from split-adjusted annual dividend ÷ current
-    # close, rather than trusting yfinance's pre-formatted yield fields.
-    # Rationale: yfinance is inconsistent about whether ``dividendYield``
-    # is a fraction (0.0286 → 2.86%) or a percent (0.61 → 0.61%), and the
-    # heuristic we used (v > 1 ⇒ percent) misfires on every sub-1% payer
-    # and reports them as ~60%+. ``dividendRate`` is always in yen per
-    # share and is split-adjusted, so dividing by the latest close is
-    # unambiguous.
-    #
-    # Three display states:
-    #   (a) 配当あり — rate > 0      → percent yield
-    #   (b) 無配     — rate == 0     → "無配"
-    #   (c) 不明     — rate is None  → "—"
-    rate = fund.get("dividend_rate")
-    trailing_rate = fund.get("trailing_dividend_rate")
-    # Prefer forward rate (current-year company guidance); fall back to
-    # the trailing-12m figure when the forecast rate is absent.
-    annual_dps: float | None = None
-    for candidate in (rate, trailing_rate):
-        if candidate is not None:
-            try:
-                annual_dps = float(candidate)
-            except (TypeError, ValueError):
-                continue
-            break
-
-    if annual_dps is None:
-        div_value_html = "—"
-    elif annual_dps == 0:
-        div_value_html = "無配"
-    else:
-        yield_pct = annual_dps / float(last) * 100
-        div_value_html = f"{yield_pct:.2f}%"
-    f3.markdown(
-        f'''
-        <div class="kt-metric-card">
-          <div class="kt-metric-label">配当利回り</div>
-          <div class="kt-metric-value">{div_value_html}</div>
-        </div>
-        ''',
-        unsafe_allow_html=True,
-    )
+    # Keep fundamentals in their original visual position, but fill this slot
+    # only after the chart has been sent to the browser.
+    fundamentals_slot = st.empty()
 
     # ----- Historical PER (optional oscillator) ---------------------------
     # Computed lazily only when the panel is enabled. The underlying
@@ -2652,8 +2756,10 @@ def main() -> None:
     per_source: str = ""
     if show_per_hist:
         per_series, per_source = _cached_historical_per_series(
-            ticker, interval, len(df_full)
+            ticker, interval, len(df_plot)
         )
+        if per_series is not None:
+            per_series = per_series.reindex(df_plot.index)
         if per_series is None or per_series.dropna().empty:
             st.info(
                 "ヒストリカル PER を算出できませんでした"
@@ -2661,8 +2767,8 @@ def main() -> None:
             )
 
     # ----- Chart -----------------------------------------------------------
-    fig = build_figure(
-        df_full,  # pass full history; user pans/zooms within it
+    fig, osc_rows = build_figure(
+        df_plot,
         lines,
         show_sma=show_sma,
         show_sma100=show_sma100,
@@ -2678,13 +2784,14 @@ def main() -> None:
         initial_range=(initial_start, initial_end),
         ui_revision=(
             f"{ticker}-{interval}-{period_bars}"
-            f"-{int(show_volume)}{int(show_macd)}{int(show_per_hist)}"
+            f"-{int(show_volume)}{int(show_macd)}{int(show_rsi)}{int(show_per_hist)}"
             f"-{int(show_sma)}{int(show_sma100)}{int(show_sma200)}"
         ),
         ticker_label=f"{ticker} {label}",
         currency_symbol=cur,
         show_volume=show_volume,
         show_macd=show_macd,
+        show_rsi=show_rsi,
         show_per=show_per_hist,
         per_series=per_series,
         per_source=per_source,
@@ -2744,31 +2851,45 @@ def main() -> None:
                 line_color="#2E6B47",
                 line_width=1.5,
                 line_dash="dash",
-                annotation_text=f"📅 {da_label}",
-                annotation_position="top right",
-                annotation_font_color="#2E6B47",
-                annotation_font_size=10,
+            )
+            fig.add_annotation(
+                x=da_date,
+                y=1,
+                yref="paper",
+                text=f"📅 {da_label}",
+                showarrow=False,
+                font=dict(color="#2E6B47", size=10),
+                xanchor="left",
+                yanchor="bottom",
             )
 
     # Show existing trendline alerts as shapes on the Plotly fig
     trendlines = ticker_cfg.setdefault("trendlines", [])
     for tl in trendlines:
+        if not _is_valid_alert_trendline(tl):
+            continue
+        target = tl.get("target", "price")
+        if target == "price":
+            trow = 1
+        else:
+            trow = osc_rows.get(target.lower(), 1)
+            
         fig.add_shape(
             type="line",
             x0=tl["x0"],
             y0=tl["y0"],
             x1=tl["x1"],
             y1=tl["y1"],
-            line=dict(color="#d65a31", width=5.0, dash="solid"),
+            line=dict(color="#d65a31", width=2.0, dash="solid"),
             editable=True,
             layer="above",
-            row=1, col=1,
+            row=trow, col=1,
         )
 
     # Configure the default style for new user-drawn trendlines
     fig.update_layout(
         newshape=dict(
-            line=dict(color="#d65a31", width=5.0, dash="solid")
+            line=dict(color="#d65a31", width=2.0, dash="solid")
         )
     )
 
@@ -2780,33 +2901,18 @@ def main() -> None:
     chart_result = price_line_chart(
         fig,
         current_price=curr_p,
-        height=700,
+        height=fig.layout.height or 700,
         key=_chart_key,
     )
 
-    # Debug logging to trace shapes and result
-    try:
-        from datetime import datetime
-        shapes_info = []
-        if hasattr(fig.layout, "shapes") and fig.layout.shapes:
-            for s in fig.layout.shapes:
-                shapes_info.append({
-                    "type": getattr(s, "type", None),
-                    "x0": getattr(s, "x0", None),
-                    "y0": getattr(s, "y0", None),
-                    "x1": getattr(s, "x1", None),
-                    "y1": getattr(s, "y1", None),
-                    "editable": getattr(s, "editable", None),
-                    "layer": getattr(s, "layer", None)
-                })
-        with open(r"c:\Users\matsu\OneDrive\claude\stock_future\debug_trendlines.txt", "a", encoding="utf-8") as debug_f:
-            debug_f.write(f"\n--- RUN ticker={ticker} time={datetime.now().isoformat()} ---\n")
-            debug_f.write(f"Config trendlines: {ticker_cfg.get('trendlines')}\n")
-            debug_f.write(f"fig.layout.shapes: {shapes_info}\n")
-            debug_f.write(f"chart_result: {chart_result}\n")
-    except Exception as e:
-        with open(r"c:\Users\matsu\OneDrive\claude\stock_future\debug_trendlines.txt", "a", encoding="utf-8") as debug_f:
-            debug_f.write(f"Logging error: {str(e)}\n")
+    # Network-backed fundamentals are deliberately rendered after the chart.
+    # The reserved slot keeps the visual order unchanged without delaying the
+    # primary ticker-switch feedback.
+    if show_fundamentals:
+        with fundamentals_slot.container():
+            _render_fundamentals_section(
+                ticker, float(last), interval, pd.Timestamp(df_full.index[-1])
+            )
 
     # Process alert registration from the component
     if chart_result is not None:
@@ -2839,7 +2945,21 @@ def main() -> None:
                 st.rerun()
             elif "trendlines" in chart_result:
                 # ---- Trendlines alert from user drawings ----
-                ticker_cfg["trendlines"] = chart_result["trendlines"]
+                yref_to_target = {"y": "price", "y1": "price"}
+                for name, row in osc_rows.items():
+                    yref_to_target[f"y{row}"] = name.upper()
+                
+                new_trendlines = []
+                for tl in chart_result["trendlines"]:
+                    if not _is_valid_alert_trendline(tl):
+                        continue
+                    yref = tl.get("yref", "y")
+                    target = yref_to_target.get(yref, "price")
+                    tl_copy = dict(tl)
+                    tl_copy["target"] = target
+                    new_trendlines.append(tl_copy)
+
+                ticker_cfg["trendlines"] = new_trendlines
                 ticker_cfg["trendline_alert"] = True
                 save_config(noti_config)
                 st.toast("✅ トレンドラインのアラート設定を更新しました")
@@ -2945,61 +3065,60 @@ def main() -> None:
             st.info("日付アラートはまだ設定されていません。")
 
     # ----- Earnings details table (J-Quants V2 summary data) ---------------
-    from jquants import cleaned_summary
+    if show_earnings:
+        # 日本株（末尾が .T または数値）の場合のみ業績表示を試みる
+        is_jp_stock = ticker.endswith(".T") or ticker.isdigit()
 
-    # 日本株（末尾が .T または数値）の場合のみ業績表示を試みる
-    is_jp_stock = ticker.endswith(".T") or ticker.isdigit()
+        if is_jp_stock:
+            with st.expander("📊 業績・決算短信データ", expanded=False):
+                from jquants import cleaned_summary
 
-    if is_jp_stock:
-        with st.expander("📊 業績・決算短信データ", expanded=False):
-            with st.spinner("決算データを取得中..."):
-                clean_df = cleaned_summary(ticker)
+                with st.spinner("決算データを取得中..."):
+                    clean_df = cleaned_summary(ticker)
 
-            if clean_df is not None and not clean_df.empty:
-                # 1. 会社通期予想値の表示 (最新レコードから)
-                latest_row = clean_df.iloc[-1]
-                fy_end = pd.to_datetime(latest_row.get("CurFYEn"))
-                fy_str = f"{fy_end.strftime('%Y/%m')}期" if pd.notna(fy_end) else "今期"
+                if clean_df is not None and not clean_df.empty:
+                    latest_row = clean_df.iloc[-1]
+                    fy_end = pd.to_datetime(latest_row.get("CurFYEn"))
+                    fy_str = f"{fy_end.strftime('%Y/%m')}期" if pd.notna(fy_end) else "今期"
 
-                st.markdown(f"##### 🔮 {fy_str} 通期会社予想")
-                forecast_data = {
-                    "指標": ["売上高", "営業利益", "経常利益", "当期純利益", "1株当たり利益 (FEPS)"],
-                    "会社予想値": [
-                        _format_financial_value(latest_row.get("FSales")),
-                        _format_financial_value(latest_row.get("FOP")),
-                        _format_financial_value(latest_row.get("FOdP")),
-                        _format_financial_value(latest_row.get("FNP")),
-                        _format_eps_value(latest_row.get("FEPS")),
-                    ]
-                }
-                st.table(pd.DataFrame(forecast_data))
+                    st.markdown(f"##### 🔮 {fy_str} 通期会社予想")
+                    forecast_data = {
+                        "指標": ["売上高", "営業利益", "経常利益", "当期純利益", "1株当たり利益 (FEPS)"],
+                        "会社予想値": [
+                            _format_financial_value(latest_row.get("FSales")),
+                            _format_financial_value(latest_row.get("FOP")),
+                            _format_financial_value(latest_row.get("FOdP")),
+                            _format_financial_value(latest_row.get("FNP")),
+                            _format_eps_value(latest_row.get("FEPS")),
+                        ]
+                    }
+                    st.table(pd.DataFrame(forecast_data))
 
-                # 2. 四半期実績推移の表示 (降順)
-                st.markdown("##### 📈 四半期決算短信実績 (開示日順)")
-                clean_df_desc = clean_df.sort_values("DiscDate", ascending=False)
+                    st.markdown("##### 📈 四半期決算短信実績 (開示日順)")
+                    clean_df_desc = clean_df.sort_values("DiscDate", ascending=False)
 
-                rows = []
-                for _, row in clean_df_desc.iterrows():
-                    cur_fy_end = pd.to_datetime(row.get("CurFYEn"))
-                    per_type = row.get("CurPerType", "")
-                    period_str = f"{cur_fy_end.strftime('%Y/%m')}期 {per_type}" if pd.notna(cur_fy_end) else per_type
+                    rows = []
+                    for _, row in clean_df_desc.iterrows():
+                        cur_fy_end = pd.to_datetime(row.get("CurFYEn"))
+                        per_type = row.get("CurPerType", "")
+                        period_str = f"{cur_fy_end.strftime('%Y/%m')}期 {per_type}" if pd.notna(cur_fy_end) else per_type
 
-                    rows.append({
-                        "決算期": period_str,
-                        "発表日": pd.to_datetime(row.get("DiscDate")).strftime("%Y-%m-%d"),
-                        "売上高": _format_financial_value(row.get("Sales")),
-                        "営業利益": _format_financial_value(row.get("OP")),
-                        "経常利益": _format_financial_value(row.get("OdP")),
-                        "当期純利益": _format_financial_value(row.get("NP")),
-                        "1株益 (EPS)": _format_eps_value(row.get("EPS")),
-                        "自己資本比率": _format_pct_value(row.get("EqAR")),
-                    })
-                st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
-            else:
-                st.info("決算短信データが見つかりませんでした。(J-Quants APIキー設定状況や通信状態を確認してください)")
-    else:
-        with st.expander("📊 業績・決算短信データ", expanded=False):
-            st.info("業績データの表示は日本株のみサポートされています。(指数・米国株等は対象外です)")
+                        rows.append({
+                            "決算期": period_str,
+                            "発表日": pd.to_datetime(row.get("DiscDate")).strftime("%Y-%m-%d"),
+                            "売上高": _format_financial_value(row.get("Sales")),
+                            "営業利益": _format_financial_value(row.get("OP")),
+                            "経常利益": _format_financial_value(row.get("OdP")),
+                            "当期純利益": _format_financial_value(row.get("NP")),
+                            "1株益 (EPS)": _format_eps_value(row.get("EPS")),
+                            "自己資本比率": _format_pct_value(row.get("EqAR")),
+                        })
+                    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+                else:
+                    st.info("決算短信データが見つかりませんでした。(J-Quants APIキー設定状況や通信状態を確認してください)")
+        else:
+            with st.expander("📊 業績・決算短信データ", expanded=False):
+                st.info("業績データの表示は日本株のみサポートされています。(指数・米国株等は対象外です)")
 
     # ----- Line details table ---------------------------------------------
     if lines:

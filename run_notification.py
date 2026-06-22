@@ -98,6 +98,21 @@ def _setup_logging(session: str) -> logging.Logger:
     return logger
 
 
+def _macd_distance_text(
+    macd_value: float,
+    signal_value: float,
+    cross_type: str | None = None,
+) -> str:
+    """Describe the current distance to the next MACD cross."""
+    if cross_type == "gc":
+        return "⬆️ **GC発生**"
+    if cross_type == "dc":
+        return "⬇️ **DC発生**"
+    gap = abs(macd_value - signal_value)
+    next_cross = "GC" if macd_value <= signal_value else "DC"
+    return f"{next_cross}まであと `{gap:.2f}`"
+
+
 def _collect_ticker_statuses(
     tickers: dict[str, str],
     checks_config: dict,
@@ -115,7 +130,26 @@ def _collect_ticker_statuses(
 
     for ticker, name in tickers.items():
         ticker_cfg = tickers_cfg.get(ticker, {})
+        
+        if not ticker_cfg.get("notifications_enabled", True):
+            continue
+
         checks = []
+        df_daily = None
+        current_price = None
+        previous_change_pct = None
+        try:
+            df_daily = load_ohlcv(ticker, interval="1d")
+            if df_daily is not None and not df_daily.empty:
+                close = df_daily["Close"].dropna()
+                if not close.empty:
+                    current_price = float(close.iloc[-1])
+                if len(close) >= 2 and float(close.iloc[-2]) != 0:
+                    previous_change_pct = (
+                        float(close.iloc[-1]) / float(close.iloc[-2]) - 1.0
+                    ) * 100.0
+        except Exception:
+            pass
 
         # Weekly MACD status
         w_enabled = ticker_cfg.get("weekly_macd_cross", global_defaults.get("weekly_macd_cross", True))
@@ -129,16 +163,17 @@ def _collect_ticker_statuses(
                 )
                 if ws:
                     status = "bullish" if ws.position == "bullish" else "bearish"
-                    cross_info = ""
-                    if ws.cross_type == "gc":
-                        cross_info = " ⬆️GC発生"
-                    elif ws.cross_type == "dc":
-                        cross_info = " ⬇️DC発生"
+                    distance = _macd_distance_text(
+                        ws.macd_val, ws.signal_val, ws.cross_type,
+                    )
                     checks.append({
                         "type": "weekly_macd_cross",
                         "label": "週足MACD",
                         "status": status,
-                        "detail": f"MACD `{ws.macd_val:+.2f}` / Signal `{ws.signal_val:+.2f}`{cross_info}",
+                        "detail": (
+                            f"MACD `{ws.macd_val:+.2f}` / Signal `{ws.signal_val:+.2f}`"
+                            f" ｜ {distance}"
+                        ),
                     })
             except Exception:
                 pass
@@ -147,7 +182,6 @@ def _collect_ticker_statuses(
         d_enabled = ticker_cfg.get("daily_macd_cross", global_defaults.get("daily_macd_cross", False))
         if d_enabled:
             try:
-                df_daily = load_ohlcv(ticker, interval="1d")
                 if df_daily is not None and len(df_daily) >= 35:
                     fast = daily_macd_params.get("fast", 12)
                     slow = daily_macd_params.get("slow", 26)
@@ -156,12 +190,23 @@ def _collect_ticker_statuses(
                     if len(macd_df["macd"]) >= 2:
                         curr_m = float(macd_df["macd"].iloc[-1])
                         curr_s = float(macd_df["signal"].iloc[-1])
+                        prev_m = float(macd_df["macd"].iloc[-2])
+                        prev_s = float(macd_df["signal"].iloc[-2])
                         d_status = "bullish" if curr_m > curr_s else "bearish"
+                        cross_type = None
+                        if prev_m <= prev_s and curr_m > curr_s:
+                            cross_type = "gc"
+                        elif prev_m >= prev_s and curr_m < curr_s:
+                            cross_type = "dc"
+                        distance = _macd_distance_text(curr_m, curr_s, cross_type)
                         checks.append({
                             "type": "daily_macd_cross",
                             "label": "日足MACD",
                             "status": d_status,
-                            "detail": f"MACD `{curr_m:+.2f}` / Signal `{curr_s:+.2f}`",
+                            "detail": (
+                                f"MACD `{curr_m:+.2f}` / Signal `{curr_s:+.2f}`"
+                                f" ｜ {distance}"
+                            ),
                         })
             except Exception:
                 pass
@@ -170,7 +215,6 @@ def _collect_ticker_statuses(
         price_alerts = ticker_cfg.get("price_alerts", [])
         if price_alerts:
             try:
-                df_daily = load_ohlcv(ticker, interval="1d")
                 if df_daily is not None and not df_daily.empty:
                     current = float(df_daily["Close"].iloc[-1])
                     for pa in price_alerts:
@@ -188,9 +232,34 @@ def _collect_ticker_statuses(
             except Exception:
                 pass
 
+        # Date alert status
+        date_alerts = ticker_cfg.get("date_alerts", [])
+        if date_alerts:
+            for da in date_alerts:
+                date_str = da.get("date", "")
+                label = da.get("label", date_str)
+                checks.append({
+                    "type": "date_alert",
+                    "label": "日付アラート",
+                    "status": "watching",
+                    "detail": f"予定日: `{date_str}` ({label})",
+                })
+
+        # Trendlines status
+        trendlines = ticker_cfg.get("trendlines", [])
+        if trendlines:
+            checks.append({
+                "type": "trendline_alert",
+                "label": "トレンドライン",
+                "status": "watching",
+                "detail": f"設定本数: `{len(trendlines)}`本",
+            })
+
         statuses.append({
             "ticker": ticker,
             "name": name,
+            "current_price": current_price,
+            "previous_change_pct": previous_change_pct,
             "checks": checks,
         })
 
@@ -290,6 +359,10 @@ def main() -> None:
         for ticker, name in tickers.items():
             # Check override or default
             ticker_cfg = tickers_cfg.get(ticker, {})
+            
+            if not ticker_cfg.get("notifications_enabled", True):
+                continue
+
             default_val = global_defaults.get(checker_type, True if checker_type == "weekly_macd_cross" else False)
             is_enabled = ticker_cfg.get(checker_type, default_val)
 
@@ -381,6 +454,12 @@ def main() -> None:
                     f"**{label}** [{da_date}]"
                 ),
                 color=0x2E6B47,
+            )
+        elif alert.alert_type == "trendline_alert":
+            ok = notifier.send_embed(
+                title=f"📈 トレンドライン突破 — {alert.name}",
+                description=alert.message,
+                color=0xD65A31,
             )
         else:
             logger.warning("Unknown alert type: %s - skipping", alert.alert_type)

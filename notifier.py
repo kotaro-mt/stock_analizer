@@ -269,6 +269,13 @@ class DiscordNotifier:
         else:
             header = f"**{ticker}　{name}**"
 
+        change_pct = ts.get("previous_change_pct")
+        if change_pct is None:
+            price_line = "　前日比: `—`"
+        else:
+            arrow = "▲" if change_pct > 0 else "▼" if change_pct < 0 else "→"
+            price_line = f"　{arrow} 前日比: `{change_pct:+.2f}%`"
+
         check_lines: list[str] = []
         for chk in checks:
             emoji = self._STATUS_EMOJI.get(chk.get("status", ""), "⚪")
@@ -276,7 +283,8 @@ class DiscordNotifier:
             detail = chk.get("detail", "")
             check_lines.append(f"　{emoji} {label}: {detail}")
 
-        return header + "\n" + "\n".join(check_lines)
+        lines = [header, price_line, *check_lines]
+        return "\n".join(lines)
 
     def send_detailed_summary(
         self,
@@ -434,4 +442,3 @@ class DiscordNotifier:
             color=COLOR_BLUE,
             footer=" ｜ ".join(footer_parts),
         )
-
