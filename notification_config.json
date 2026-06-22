@@ -89,7 +89,7 @@
       "price_alerts": [],
       "trendlines": [],
       "date_alerts": [],
-      "notification_mode": "all",
+      "notification_mode": "alerts_only",
       "notifications_enabled": true
     },
     "GOOG": {
