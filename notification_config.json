@@ -40,11 +40,16 @@
       "date_alerts": [],
       "trendlines": [],
       "trendline_alert": true,
-      "notifications_enabled": false
+      "notifications_enabled": false,
+      "notification_mode": "off"
     },
     "5253.T": {
       "weekly_macd_cross": true,
-      "price_alerts": []
+      "price_alerts": [],
+      "notification_mode": "all",
+      "notifications_enabled": true,
+      "trendlines": [],
+      "date_alerts": []
     },
     "7203.T": {
       "price_alerts": [],
@@ -65,7 +70,9 @@
           "target": "price"
         }
       ],
-      "trendline_alert": true
+      "trendline_alert": true,
+      "notification_mode": "all",
+      "notifications_enabled": true
     },
     "8001.T": {
       "notifications_enabled": true,
@@ -75,7 +82,15 @@
       "price_alerts": [],
       "date_alerts": [],
       "trendline_alert": true,
-      "trendlines": []
+      "trendlines": [],
+      "notification_mode": "all"
+    },
+    "6758.T": {
+      "price_alerts": [],
+      "trendlines": [],
+      "date_alerts": [],
+      "notification_mode": "alerts_only",
+      "notifications_enabled": true
     }
   }
 }
