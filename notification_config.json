@@ -46,7 +46,7 @@
     "5253.T": {
       "weekly_macd_cross": true,
       "price_alerts": [],
-      "notification_mode": "all",
+      "notification_mode": "alerts_only",
       "notifications_enabled": true,
       "trendlines": [],
       "date_alerts": []
