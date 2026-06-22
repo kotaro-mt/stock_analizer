@@ -113,11 +113,20 @@ def _macd_distance_text(
     return f"{next_cross}まであと `{gap:.2f}`"
 
 
+def _notification_mode(ticker_cfg: dict) -> str:
+    """Return all / alerts_only / off with legacy boolean compatibility."""
+    mode = ticker_cfg.get("notification_mode")
+    if mode in {"all", "alerts_only", "off"}:
+        return mode
+    return "all" if ticker_cfg.get("notifications_enabled", True) else "off"
+
+
 def _collect_ticker_statuses(
     tickers: dict[str, str],
     checks_config: dict,
     global_defaults: dict,
     tickers_cfg: dict,
+    fired_tickers: set[str] | None = None,
 ) -> list[dict]:
     """Collect MACD and price alert status for all tickers for summary display."""
     from alert_checker import get_weekly_macd_status, _resample_to_weekly
@@ -127,11 +136,15 @@ def _collect_ticker_statuses(
     statuses = []
     macd_params = checks_config.get("weekly_macd_cross", {}).get("macd_params", {})
     daily_macd_params = checks_config.get("daily_macd_cross", {}).get("macd_params", {})
+    fired_tickers = fired_tickers or set()
 
     for ticker, name in tickers.items():
         ticker_cfg = tickers_cfg.get(ticker, {})
         
-        if not ticker_cfg.get("notifications_enabled", True):
+        notification_mode = _notification_mode(ticker_cfg)
+        if notification_mode == "off":
+            continue
+        if notification_mode == "alerts_only" and ticker not in fired_tickers:
             continue
 
         checks = []
@@ -360,7 +373,7 @@ def main() -> None:
             # Check override or default
             ticker_cfg = tickers_cfg.get(ticker, {})
             
-            if not ticker_cfg.get("notifications_enabled", True):
+            if _notification_mode(ticker_cfg) == "off":
                 continue
 
             default_val = global_defaults.get(checker_type, True if checker_type == "weekly_macd_cross" else False)
@@ -495,6 +508,7 @@ def main() -> None:
         logger.info("Collecting ticker statuses for summary …")
         ticker_statuses = _collect_ticker_statuses(
             tickers, checks_config, global_defaults, tickers_cfg,
+            fired_tickers={alert.ticker for alert in all_alerts},
         )
         notifier.send_detailed_summary(
             session=session_label,

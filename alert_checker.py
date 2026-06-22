@@ -22,7 +22,7 @@ from typing import Any
 import pandas as pd
 
 from data import load_ohlcv
-from indicators import macd
+from indicators import macd, rsi
 
 logger = logging.getLogger(__name__)
 
@@ -615,6 +615,9 @@ class TrendlineAlertChecker(AlertChecker):
 
         for tl in trendlines:
             try:
+                target_type = str(tl.get("target", "price")).upper()
+                if target_type not in {"PRICE", "RSI"}:
+                    continue
                 x0_str, x1_str = tl.get("x0", ""), tl.get("x1", "")
                 y0, y1 = float(tl.get("y0", 0)), float(tl.get("y1", 0))
 
@@ -627,11 +630,11 @@ class TrendlineAlertChecker(AlertChecker):
 
                 # Ensure order
                 min_x = min(x0, x1)
-                max_x = max(x0, x1)
 
-                # The trendline is active in [x0, x1].
-                # We check if t_curr falls within this range.
-                if not (min_x <= t_curr <= max_x):
+                # A user-drawn line defines a ray: once its first anchor date
+                # is reached, extend it beyond the second anchor so future
+                # candles/RSI values can cross it and trigger a notification.
+                if t_curr < min_x:
                     continue
 
                 # Calculate line equation slope and target prices
@@ -642,18 +645,27 @@ class TrendlineAlertChecker(AlertChecker):
                 y_prev_target = y0 + ((t_prev - x0).total_seconds() / span_sec) * (y1 - y0)
                 y_curr_target = y0 + ((t_curr - x0).total_seconds() / span_sec) * (y1 - y0)
 
-                low_curr = float(df["Low"].iloc[-1])
-                high_curr = float(df["High"].iloc[-1])
-                close_prev = float(df["Close"].iloc[-2])
-                close_curr = float(df["Close"].iloc[-1])
+                if target_type == "RSI":
+                    rsi_series = rsi(df["Close"])
+                    val_curr = float(rsi_series.iloc[-1])
+                    val_prev = float(rsi_series.iloc[-2])
+                    low_curr = val_curr
+                    high_curr = val_curr
+                    close_prev = val_prev
+                    close_curr = val_curr
+                else:
+                    low_curr = float(df["Low"].iloc[-1])
+                    high_curr = float(df["High"].iloc[-1])
+                    close_prev = float(df["Close"].iloc[-2])
+                    close_curr = float(df["Close"].iloc[-1])
 
                 triggered = False
 
-                # Case 1: Latest daily candle touches the line
+                # Case 1: Latest daily value/candle touches the line
                 if low_curr <= y_curr_target <= high_curr:
                     triggered = True
 
-                # Case 2: Close price crossed the line
+                # Case 2: Value crossed the line
                 diff_prev = close_prev - y_prev_target
                 diff_curr = close_curr - y_curr_target
                 if diff_prev * diff_curr <= 0:
@@ -671,12 +683,14 @@ class TrendlineAlertChecker(AlertChecker):
                     continue
 
                 # Trigger alert!
+                prefix = "RSI" if target_type == "RSI" else "価格"
+                unit = "" if target_type == "RSI" else "円"
                 alerts.append(
                     Alert(
                         alert_type="trendline_alert",
                         ticker=ticker,
                         name=name,
-                        message=f"📈 {name}({ticker}) — トレンドラインを突破またはタッチしました（ターゲット: {y_curr_target:,.1f}円）",
+                        message=f"📈 {name}({ticker}) — {prefix}がトレンドラインを突破またはタッチしました（ターゲット: {y_curr_target:,.1f}{unit}）",
                         details={
                             "x0": x0_str,
                             "y0": y0,

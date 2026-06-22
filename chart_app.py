@@ -474,6 +474,7 @@ def sync_favorite_and_notifications(
         config = load_config()
         defaults = config.get("global_defaults", {})
         ticker_cfg = config.setdefault("tickers", {}).setdefault(ticker, {})
+        ticker_cfg.setdefault("notification_mode", "all")
         ticker_cfg.setdefault("notifications_enabled", True)
         ticker_cfg.setdefault("weekly_macd_cross", defaults.get("weekly_macd_cross", True))
         ticker_cfg.setdefault("daily_macd_cross", defaults.get("daily_macd_cross", False))
@@ -1588,17 +1589,23 @@ def build_figure(
         linecolor=THEME["border"],
         tickfont=dict(color=THEME["ink_muted"], size=10),
     )
-    # Hide gaps in the data so the chart reads as a continuous series.
-    # Strategy depends on the bar interval:
-    #   - 1d:  list every missing calendar day explicitly
-    #   - 1wk: detect gaps > 7 days and explicitly hide the missing weeks
+    # Hide exchange-closed dates so each daily candle has equal horizontal
+    # spacing. Weekends use Plotly's recurring rule; only missing weekdays
+    # (Japanese holidays and exceptional closures) are listed explicitly.
+    # The previous implementation enumerated every weekend over ten years,
+    # producing thousands of range-break values and occasional malformed gaps.
     rangebreaks: list[dict] = []
     if interval == "1d":
-        all_days = pd.date_range(df.index[0], df.index[-1], freq="D")
-        missing = sorted(set(all_days) - set(df.index))
-        if missing:
+        rangebreaks.append(dict(bounds=["sat", "mon"]))
+        business_days = pd.date_range(df.index[0], df.index[-1], freq="B")
+        trading_days = pd.DatetimeIndex(df.index).normalize()
+        missing_business_days = business_days.difference(trading_days)
+        if len(missing_business_days):
             rangebreaks.append(
-                dict(values=[d.strftime("%Y-%m-%d") for d in missing])
+                dict(
+                    values=[d.strftime("%Y-%m-%d") for d in missing_business_days],
+                    dvalue=24 * 60 * 60 * 1000,
+                )
             )
     elif interval == "1wk":
         missing_weeks = []
@@ -2876,6 +2883,7 @@ def main() -> None:
             
         fig.add_shape(
             type="line",
+            name="user-alert-trendline",
             x0=tl["x0"],
             y0=tl["y0"],
             x1=tl["x1"],
@@ -2955,6 +2963,8 @@ def main() -> None:
                         continue
                     yref = tl.get("yref", "y")
                     target = yref_to_target.get(yref, "price")
+                    if target not in {"price", "RSI"}:
+                        continue
                     tl_copy = dict(tl)
                     tl_copy["target"] = target
                     new_trendlines.append(tl_copy)

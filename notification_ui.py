@@ -178,6 +178,15 @@ def load_config() -> dict:
     if "checks" not in config:
         config["checks"] = default_structure["checks"]
 
+    # Migrate the legacy boolean into the three-state notification mode.
+    for ticker_cfg in config["tickers"].values():
+        mode = ticker_cfg.get("notification_mode")
+        if mode not in {"all", "alerts_only", "off"}:
+            mode = "all" if ticker_cfg.get("notifications_enabled", True) else "off"
+            ticker_cfg["notification_mode"] = mode
+        # Keep the old flag for compatibility with older deployed runners.
+        ticker_cfg["notifications_enabled"] = mode != "off"
+
     # Ensure all checkers are globally enabled under "checks"
     for ck in ["weekly_macd_cross", "daily_macd_cross", "price_alert"]:
         if ck not in config["checks"]:
@@ -434,10 +443,14 @@ def show_notification_ui(name_lookup: dict[str, str]) -> None:
 
                 trendlines: list[dict] = t_cfg.setdefault("trendlines", [])
                 date_alerts: list[dict] = t_cfg.setdefault("date_alerts", [])
-                notifications_enabled = t_cfg.get("notifications_enabled", True)
+                notification_mode = t_cfg.get("notification_mode", "all")
 
                 ticker_alert_count = len(price_alerts) + len(trendlines) + len(date_alerts)
-                state_icon = "🟢" if notifications_enabled else "⚫"
+                state_icon = {
+                    "all": "🟢",
+                    "alerts_only": "🟠",
+                    "off": "⚫",
+                }.get(notification_mode, "🟢")
                 label = f"{t}　{name}" if name else t
                 expander_label = (
                     f"{state_icon}  {label}　｜ "
@@ -446,18 +459,28 @@ def show_notification_ui(name_lookup: dict[str, str]) -> None:
                 )
 
                 with st.expander(expander_label, expanded=False):
-                    new_notifications_enabled = st.toggle(
-                        "🔔 通知を有効にする",
-                        value=notifications_enabled,
-                        key=f"notify_chk_{t}",
-                        help="この銘柄のすべてのアラート通知を有効にします"
+                    new_notification_mode = st.radio(
+                        "通知モード",
+                        options=["all", "alerts_only", "off"],
+                        index=["all", "alerts_only", "off"].index(notification_mode),
+                        format_func=lambda mode: {
+                            "all": "すべて表示",
+                            "alerts_only": "発火時のみ",
+                            "off": "通知しない",
+                        }[mode],
+                        horizontal=True,
+                        key=f"notification_mode_{t}",
+                        help="発火時のみを選ぶと、通常サマリーからは除外され、条件成立時だけ表示・通知されます。",
                     )
-                    if new_notifications_enabled != notifications_enabled:
-                        t_cfg["notifications_enabled"] = new_notifications_enabled
+                    if new_notification_mode != notification_mode:
+                        t_cfg["notification_mode"] = new_notification_mode
+                        t_cfg["notifications_enabled"] = new_notification_mode != "off"
                         save_config(config)
                         st.rerun()
 
-                    if not new_notifications_enabled:
+                    if new_notification_mode == "alerts_only":
+                        st.info("通常の通知サマリーには表示せず、条件が発火した時だけ表示・通知します。")
+                    elif new_notification_mode == "off":
                         st.info("この銘柄の通知はOFFになっています。設定内容は保持されますが、アラートは発火しません。")
 
                     # MACD Settings

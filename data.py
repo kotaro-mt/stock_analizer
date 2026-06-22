@@ -81,6 +81,13 @@ def _download_from_yfinance(
     except ImportError:
         return None
     try:
+        # yfinance stores timezone/cookie SQLite files under the user profile
+        # by default. That location is not writable in some scheduled or
+        # sandboxed runs, causing ``OperationalError: unable to open database
+        # file`` and silently leaving OHLCV gaps. Keep its cache with ours.
+        yf_cache = CACHE_DIR / "yfinance"
+        yf_cache.mkdir(parents=True, exist_ok=True)
+        yf.set_tz_cache_location(str(yf_cache))
         df = yf.download(
             ticker,
             period=period or cfg["period"],
@@ -105,6 +112,43 @@ def _download_from_yfinance(
     if df.index.tz is not None:
         df.index = df.index.tz_localize(None)
     return df
+
+
+def _refresh_period_for_age(age_days: float) -> str:
+    """Choose a yfinance window that safely overlaps the cached history."""
+    if age_days <= 25:
+        return "1mo"
+    if age_days <= 80:
+        return "3mo"
+    if age_days <= 170:
+        return "6mo"
+    if age_days <= 350:
+        return "1y"
+    return "10y"
+
+
+def _recent_jp_reference_sessions(
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+) -> pd.DatetimeIndex:
+    """Build a recent JPX session calendar from multiple liquid tickers.
+
+    Using the union means a hole in one reference cache does not become a
+    false market holiday. This avoids an extra calendar dependency while
+    distinguishing Golden Week closures from ticker-specific cache gaps.
+    """
+    sessions = pd.DatetimeIndex([])
+    for filename in ("7203_T.parquet", "6758_T.parquet", "9984_T.parquet"):
+        path = CACHE_DIR / filename
+        if not path.exists():
+            continue
+        try:
+            ref = pd.read_parquet(path, columns=[])
+            ref_index = pd.DatetimeIndex(ref.index).normalize()
+            sessions = sessions.union(ref_index[(ref_index >= start) & (ref_index <= end)])
+        except Exception:
+            continue
+    return sessions.sort_values()
 
 
 def load_ohlcv(
@@ -167,7 +211,7 @@ def load_ohlcv(
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
-    # ----- Incremental refresh when the cache is stale --------------------
+    # ----- Incremental refresh and gap repair ------------------------------
     # The cache used to be "write once, read forever", so technical
     # indicators (MA/RSI/MACD) were computed on whatever bars happened to
     # be in the parquet — typically days or weeks behind. Honor the
@@ -179,9 +223,55 @@ def load_ohlcv(
         # df.index is tz-naive (see _download_from_yfinance), so compare
         # against a tz-naive "now".
         age_hours = (pd.Timestamp.now() - last_ts).total_seconds() / 3600.0
-        if age_hours > ttl_hours:
+        # A previous implementation always fetched only ``1mo``. If a cache
+        # was more than a month stale, concatenation left a silent hole between
+        # the old tail and the newly downloaded window. Detect those internal
+        # calendar gaps as well and request a window large enough to overlap.
+        normalized_index = pd.DatetimeIndex(df.index).sort_values().normalize()
+        gaps = normalized_index.to_series().diff()
+        # 2019's extended Golden Week produced a legitimate 11-day closure,
+        # so only gaps longer than two calendar weeks are considered corrupt.
+        gap_threshold_days = 14 if interval == "1d" else 21
+        suspicious_gaps = gaps[gaps > pd.Timedelta(days=gap_threshold_days)]
+
+        refresh_age_days = max(age_hours / 24.0, 0.0)
+        needs_refresh = age_hours > ttl_hours
+        if not suspicious_gaps.empty:
+            gap_end = pd.Timestamp(suspicious_gaps.index[-1])
+            gap_pos = normalized_index.get_loc(gap_end)
+            gap_start = normalized_index[max(0, gap_pos - 1)]
+            refresh_age_days = max(
+                refresh_age_days,
+                (pd.Timestamp.now().normalize() - gap_start).days + 7,
+            )
+            needs_refresh = True
+
+        # Also catch short ticker-specific holes (for example 6758.T missing
+        # only three sessions after Golden Week). Compare recent Japanese
+        # stocks against a union of reference trading sessions rather than a
+        # simple weekday calendar, which would mistake national holidays for
+        # missing data.
+        if interval == "1d" and ticker.endswith(".T"):
+            recent_start = max(
+                normalized_index[0],
+                pd.Timestamp.now().normalize() - pd.Timedelta(days=180),
+            )
+            reference_sessions = _recent_jp_reference_sessions(
+                recent_start, normalized_index[-1],
+            )
+            missing_sessions = reference_sessions.difference(normalized_index)
+            if len(missing_sessions):
+                earliest_missing = pd.Timestamp(missing_sessions[0])
+                refresh_age_days = max(
+                    refresh_age_days,
+                    (pd.Timestamp.now().normalize() - earliest_missing).days + 7,
+                )
+                needs_refresh = True
+
+        if needs_refresh:
+            refresh_period = _refresh_period_for_age(refresh_age_days)
             df_new = _download_from_yfinance(
-                ticker, interval=interval, period="1mo",
+                ticker, interval=interval, period=refresh_period,
             )
             if df_new is not None and not df_new.empty:
                 merged = pd.concat([df, df_new])
