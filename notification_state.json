@@ -1,5 +1,10 @@
 {
-  "weekly_macd_cross": {},
+  "weekly_macd_cross": {
+    "5253.T": {
+      "last_cross": "dc",
+      "cross_date": "2026-06-26"
+    }
+  },
   "daily_macd_cross": {},
   "price_alert": {
     "7013.T_above_2000.0": {
