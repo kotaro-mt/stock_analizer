@@ -1,0 +1,11 @@
+{
+  "weekly_macd_cross": {},
+  "daily_macd_cross": {},
+  "price_alert": {
+    "7013.T_above_2000.0": {
+      "notified": true,
+      "price": 2434.5
+    }
+  },
+  "trendline_alert": {}
+}

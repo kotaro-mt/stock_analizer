@@ -1,0 +1,68 @@
+{
+  "enabled": true,
+  "target": "favorites",
+  "checks": {
+    "weekly_macd_cross": {
+      "enabled": true,
+      "macd_params": {
+        "fast": 12,
+        "slow": 26,
+        "signal": 9
+      }
+    },
+    "price_alert": {
+      "enabled": true,
+      "alerts": []
+    },
+    "trendline_alert": {
+      "enabled": true
+    },
+    "daily_macd_cross": {
+      "enabled": true,
+      "macd_params": {
+        "fast": 12,
+        "slow": 26,
+        "signal": 9
+      }
+    }
+  },
+  "global_defaults": {
+    "weekly_macd_cross": true,
+    "daily_macd_cross": false,
+    "price_alert": true,
+    "trendline_alert": true
+  },
+  "tickers": {
+    "7013.T": {
+      "weekly_macd_cross": true,
+      "price_alerts": [],
+      "price_alert": false,
+      "date_alerts": [],
+      "trendlines": [],
+      "trendline_alert": true
+    },
+    "5253.T": {
+      "weekly_macd_cross": true,
+      "price_alerts": []
+    },
+    "7203.T": {
+      "price_alerts": [],
+      "price_alert": false,
+      "date_alerts": [
+        {
+          "date": "2026-09-15",
+          "label": "2026-09-15"
+        }
+      ],
+      "trendlines": [
+        {
+          "x0": "2026-03-02",
+          "y0": 3949.97,
+          "x1": "2026-06-19",
+          "y1": 2883.43
+        }
+      ],
+      "trendline_alert": true
+    }
+  }
+}

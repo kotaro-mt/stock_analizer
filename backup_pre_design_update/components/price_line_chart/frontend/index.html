@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'IBM Plex Sans JP','Hiragino Sans',sans-serif;
+  background:transparent;overflow:hidden;
+}
+
+/* ---- wrapper ---- */
+#wrapper{position:relative;width:100%}
+#plotly-chart{width:100%}
+
+/* ---- floating toolbar ---- */
+#toolbar{
+  position:absolute;top:6px;left:50%;transform:translateX(-50%);
+  z-index:1000;display:flex;align-items:center;gap:6px;
+  background:rgba(251,248,239,.95);
+  backdrop-filter:blur(8px);
+  border:1.5px solid #14110E;
+  border-radius:0px;
+  padding:6px 12px;
+  box-shadow:3px 3px 0 #14110E;
+  transition:all .2s;
+}
+#toolbar.active-price{
+  border-color:#B7362E;
+  box-shadow:3px 3px 0 #B7362E;
+}
+#toolbar.active-date{
+  border-color:#2E6B47;
+  box-shadow:3px 3px 0 #2E6B47;
+}
+
+.tb-btn{
+  padding:5px 12px;border:1.5px solid #14110E;border-radius:0px;
+  cursor:pointer;font-size:12px;font-weight:600;
+  transition:all .15s;white-space:nowrap;
+  font-family:'IBM Plex Sans JP','Hiragino Sans',sans-serif;
+}
+#toggle-btn{background:#F4EFE3;color:#14110E}
+#toggle-btn:hover{background:#ECE5D3}
+#toggle-btn.active{background:#B7362E;color:#F4EFE3;border-color:#B7362E}
+
+#price-badge{
+  color:#B7362E;font-weight:700;font-size:14px;
+  font-family:'IBM Plex Mono',monospace;
+  font-variant-numeric:tabular-nums;
+  min-width:90px;text-align:center;display:none;
+}
+#direction-sel{
+  padding:4px 8px;border-radius:0px;
+  border:1.5px solid #14110E;background:#F4EFE3;color:#14110E;
+  font-family:'IBM Plex Sans JP','Hiragino Sans',sans-serif;
+  font-size:12px;display:none;cursor:pointer;
+}
+#register-btn{background:#2E6B47;color:#ffffff;border-color:#14110E;display:none}
+#register-btn:hover{background:#245437}
+#cancel-btn{background:#B7362E;color:#ffffff;border-color:#14110E;display:none}
+#cancel-btn:hover{background:#8A231C}
+
+/* ---- toolbar separator ---- */
+.tb-sep{width:1px;height:20px;background:#14110E;opacity:0.25;margin:0 2px}
+
+/* ---- date alert controls ---- */
+#date-toggle-btn{background:#F4EFE3;color:#14110E}
+#date-toggle-btn:hover{background:#ECE5D3}
+#date-toggle-btn.active{background:#2E6B47;color:#F4EFE3;border-color:#2E6B47}
+
+#date-badge{
+  color:#2E6B47;font-weight:700;font-size:13px;
+  font-family:'IBM Plex Mono',monospace;
+  font-variant-numeric:tabular-nums;
+  min-width:100px;text-align:center;display:none;
+}
+#label-input{
+  padding:4px 8px;border:1.5px solid #14110E;border-radius:0px;
+  background:#F4EFE3;color:#14110E;
+  font-family:'IBM Plex Sans JP','Hiragino Sans',sans-serif;
+  font-size:12px;display:none;width:130px;outline:none;
+}
+#label-input:focus{border-color:#2E6B47}
+#date-register-btn{background:#2E6B47;color:#ffffff;border-color:#14110E;display:none}
+#date-register-btn:hover{background:#245437}
+#date-cancel-btn{background:#B7362E;color:#ffffff;border-color:#14110E;display:none}
+#date-cancel-btn:hover{background:#8A231C}
+
+/* ---- draggable horizontal price line ---- */
+#drag-line{
+  position:absolute;left:0;right:0;height:0;
+  border-top:2px dashed #B7362E;
+  z-index:500;display:none;
+  pointer-events:auto;cursor:ns-resize;
+  filter:drop-shadow(0 0 2px rgba(183,54,46,.3));
+}
+#drag-line::before{
+  content:'';position:absolute;
+  top:-10px;left:0;right:0;height:22px;
+  cursor:ns-resize;
+}
+#drag-line-label{
+  position:absolute;right:4px;top:-11px;
+  background:#B7362E;color:#F4EFE3;
+  border:1px solid #14110E;
+  padding:2px 8px;border-radius:0px;
+  font-size:11px;font-weight:700;
+  font-family:'IBM Plex Mono',monospace;
+  white-space:nowrap;font-variant-numeric:tabular-nums;
+  pointer-events:none;
+}
+
+/* ---- draggable vertical date line ---- */
+#drag-vline{
+  position:absolute;width:0;
+  border-left:2px dashed #2E6B47;
+  z-index:500;display:none;
+  pointer-events:auto;cursor:ew-resize;
+  filter:drop-shadow(0 0 2px rgba(46,107,71,.3));
+}
+#drag-vline::before{
+  content:'';position:absolute;
+  left:-10px;top:0;bottom:0;width:22px;
+  cursor:ew-resize;
+}
+#drag-vline-label{
+  position:absolute;left:4px;top:4px;
+  background:#2E6B47;color:#F4EFE3;
+  border:1px solid #14110E;
+  padding:2px 8px;border-radius:0px;
+  font-size:11px;font-weight:700;
+  font-family:'IBM Plex Mono',monospace;
+  white-space:nowrap;
+  pointer-events:none;
+}
+
+/* ---- transparent overlay: blocks chart pan/zoom during date mode ---- */
+#vline-overlay{
+  position:absolute;
+  z-index:250;          /* above Plotly, below vline(500) and toolbar(1000) */
+  display:none;
+  cursor:ew-resize;
+  background:transparent;
+}
+
+/* ---- loading overlay ---- */
+#loading{
+  position:absolute;top:0;left:0;right:0;bottom:0;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(244,239,227,.8);z-index:2000;
+  color:#14110E;font-size:14px;
+}
+#loading.hidden{display:none}
+</style>
+</head>
+<body>
+<div id="wrapper">
+
+  <div id="toolbar">
+    <!-- Price alert controls -->
+    <button id="toggle-btn" class="tb-btn">📏 アラートラインを設定</button>
+    <span id="price-badge"></span>
+    <select id="direction-sel">
+      <option value="above">📈 上抜け</option>
+      <option value="below">📉 下抜け</option>
+    </select>
+    <button id="register-btn" class="tb-btn">✅ 登録</button>
+    <button id="cancel-btn" class="tb-btn">✖</button>
+
+    <!-- Separator -->
+    <div class="tb-sep"></div>
+
+    <!-- Date alert controls -->
+    <button id="date-toggle-btn" class="tb-btn">📅 日付アラートを設定</button>
+    <span id="date-badge"></span>
+    <input id="label-input" type="text" placeholder="ラベル（例: 決算発表）">
+    <button id="date-register-btn" class="tb-btn">✅ 登録</button>
+    <button id="date-cancel-btn" class="tb-btn">✖</button>
+  </div>
+
+  <div id="drag-line">
+    <div id="drag-line-label"></div>
+  </div>
+
+  <div id="drag-vline">
+    <div id="drag-vline-label"></div>
+  </div>
+
+  <!-- transparent overlay: captures mouse in date mode to block chart pan/zoom -->
+  <div id="vline-overlay"></div>
+
+  <div id="plotly-chart"></div>
+  <div id="loading">チャート読込中…</div>
+</div>
+
+<!-- Plotly.js from CDN -->
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  /* ================================================================
+     Streamlit bi-directional component communication helpers
+     ================================================================ */
+  function sendMsg(type,data){
+    window.parent.postMessage(
+      Object.assign({isStreamlitMessage:true,type:type},data),"*");
+  }
+  function setFrameHeight(h){sendMsg("streamlit:setFrameHeight",{height:h})}
+  function setComponentValue(v){sendMsg("streamlit:setComponentValue",{value:v})}
+
+  /* ================================================================
+     DOM refs
+     ================================================================ */
+  var chartEl       = document.getElementById("plotly-chart");
+  var dragLine      = document.getElementById("drag-line");
+  var dragLabel     = document.getElementById("drag-line-label");
+  var dragVLine     = document.getElementById("drag-vline");
+  var dragVLabel    = document.getElementById("drag-vline-label");
+  var toolbar       = document.getElementById("toolbar");
+  var toggleBtn     = document.getElementById("toggle-btn");
+  var badge         = document.getElementById("price-badge");
+  var dirSel        = document.getElementById("direction-sel");
+  var regBtn        = document.getElementById("register-btn");
+  var cancelBtn     = document.getElementById("cancel-btn");
+  var dateToggleBtn = document.getElementById("date-toggle-btn");
+  var dateBadge     = document.getElementById("date-badge");
+  var labelInput    = document.getElementById("label-input");
+  var dateRegBtn    = document.getElementById("date-register-btn");
+  var dateCancelBtn = document.getElementById("date-cancel-btn");
+  var vlineOverlay  = document.getElementById("vline-overlay");
+  var loadingEl     = document.getElementById("loading");
+
+  /* ================================================================
+     State
+     ================================================================ */
+  var hasPlotted    = false;
+  var lineVisible   = false;
+  var vlineVisible  = false;
+  var isDragging    = false;
+  var isDraggingV   = false;
+  var currentPrice  = 0;
+  var lastClose     = 0;
+  var currentDate   = "";
+  var lastTrendlines = [];
+
+  function normalizeDate(val) {
+    if (!val) return "";
+    var d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      var y = d.getFullYear();
+      var m = String(d.getMonth()+1).padStart(2,"0");
+      var day = String(d.getDate()).padStart(2,"0");
+      return y+"-"+m+"-"+day;
+    }
+    return String(val);
+  }
+
+  function normalizePrice(val) {
+    var p = parseFloat(val);
+    return isNaN(p) ? 0 : Math.round(p * 100) / 100;
+  }
+
+  function trendlinesEqual(arr1, arr2) {
+    if (arr1.length !== arr2.length) return false;
+    
+    function shapeKey(t) {
+      return normalizeDate(t.x0) + "|" + normalizePrice(t.y0) + "|" + normalizeDate(t.x1) + "|" + normalizePrice(t.y1);
+    }
+    
+    var set1 = arr1.map(shapeKey).sort().join("::");
+    var set2 = arr2.map(shapeKey).sort().join("::");
+    return set1 === set2;
+  }
+
+  var dragStartMouseY = 0;
+  var dragStartTop    = 0;
+  var dragStartMouseX = 0;
+  var dragStartLeft   = 0;
+
+  /* ================================================================
+     Y-axis helpers (price line)
+     ================================================================ */
+  function getAxisBounds(){
+    var ya  = chartEl._fullLayout.yaxis;
+    var ps  = chartEl._fullLayout._size;
+    var dom = ya.domain || [0,1];
+    var topPx = ps.t + ps.h * (1 - dom[1]);
+    var botPx = ps.t + ps.h * (1 - dom[0]);
+    return {topPx:topPx, botPx:botPx, hPx:botPx-topPx, ya:ya, ps:ps};
+  }
+
+  function dataYtoPixel(dataY){
+    var b    = getAxisBounds();
+    var frac = (dataY - b.ya.range[0]) / (b.ya.range[1] - b.ya.range[0]);
+    return b.botPx - frac * b.hPx;
+  }
+
+  function pixelToDataY(pixY){
+    var b    = getAxisBounds();
+    var frac = (b.botPx - pixY) / b.hPx;
+    return b.ya.range[0] + frac * (b.ya.range[1] - b.ya.range[0]);
+  }
+
+  function positionLine(dataY){
+    if(!chartEl._fullLayout) return;
+    var b   = getAxisBounds();
+    var pxY = dataYtoPixel(dataY);
+    pxY = Math.max(b.topPx, Math.min(b.botPx, pxY));
+    dragLine.style.top   = pxY + "px";
+    dragLine.style.left  = b.ps.l + "px";
+    dragLine.style.width = b.ps.w + "px";
+    dragLine.style.right = "auto";
+  }
+
+  /* ================================================================
+     X-axis helpers (date line)
+     ================================================================ */
+  function getXAxisBounds(){
+    var xa  = chartEl._fullLayout.xaxis;
+    var ps  = chartEl._fullLayout._size;
+    var dom = xa.domain || [0,1];
+    var leftPx  = ps.l + ps.w * dom[0];
+    var rightPx = ps.l + ps.w * dom[1];
+    return {leftPx:leftPx, rightPx:rightPx, wPx:rightPx-leftPx, xa:xa, ps:ps};
+  }
+
+  function _isoDateFromMs(ms){
+    var d = new Date(ms);
+    var y = d.getFullYear();
+    var m = String(d.getMonth()+1).padStart(2,"0");
+    var day = String(d.getDate()).padStart(2,"0");
+    return y+"-"+m+"-"+day;
+  }
+
+  /* 土曜→直前の金曜、日曜→翌月曜 にスナップ */
+  function snapToTradingDay(dateStr){
+    /* dateStr は "YYYY-MM-DD" 形式 */
+    var d = new Date(dateStr + "T12:00:00"); /* 正午固定でTZズレ防止 */
+    var dow = d.getDay(); /* 0=日, 6=土 */
+    if(dow === 6){        /* 土曜 → 金曜 */
+      d.setDate(d.getDate() - 1);
+    } else if(dow === 0){ /* 日曜 → 月曜 */
+      d.setDate(d.getDate() + 1);
+    }
+    return _isoDateFromMs(d.getTime());
+  }
+
+  function pixelToDate(pixX){
+    var b    = getXAxisBounds();
+    var xa   = b.xa;
+    if (xa && typeof xa.p2c === 'function') {
+      try {
+        var cVal = xa.p2c(pixX - b.leftPx);
+        var dateStr = "";
+        if (typeof xa.c2d === 'function') {
+          dateStr = xa.c2d(cVal);
+        } else {
+          var dateVal = new Date(cVal);
+          if (!isNaN(dateVal.getTime())) {
+            dateStr = _isoDateFromMs(dateVal.getTime());
+          }
+        }
+        if (dateStr) {
+          var match = dateStr.match(/^\d{4}-\d{2}-\d{2}/);
+          if (match) {
+            return snapToTradingDay(match[0]);
+          }
+        }
+      } catch (err) {
+        console.error("Plotly p2c conversion error:", err);
+      }
+    }
+    // Fallback:
+    var frac = (pixX - b.leftPx) / b.wPx;
+    frac = Math.max(0, Math.min(1, frac));
+    var t0 = new Date(b.xa.range[0]).getTime();
+    var t1 = new Date(b.xa.range[1]).getTime();
+    var raw = _isoDateFromMs(t0 + frac * (t1 - t0));
+    return snapToTradingDay(raw); /* 土日をスキップ */
+  }
+
+
+  function dateToPx(dateStr){
+    var b   = getXAxisBounds();
+    var xa  = b.xa;
+    if (xa && typeof xa.c2p === 'function') {
+      try {
+        var cVal;
+        if (typeof xa.d2c === 'function') {
+          cVal = xa.d2c(dateStr);
+        } else {
+          cVal = new Date(dateStr).getTime();
+        }
+        var pVal = xa.c2p(cVal);
+        if (typeof pVal === 'number' && !isNaN(pVal)) {
+          return b.leftPx + pVal;
+        }
+      } catch (err) {
+        console.error("Plotly c2p conversion error:", err);
+      }
+    }
+    // Fallback:
+    var t   = new Date(dateStr).getTime();
+    var t0  = new Date(b.xa.range[0]).getTime();
+    var t1  = new Date(b.xa.range[1]).getTime();
+    var frac = (t - t0) / (t1 - t0);
+    frac = Math.max(0, Math.min(1, frac));
+    return b.leftPx + frac * b.wPx;
+  }
+
+  function positionVLine(dateStr){
+    if(!chartEl._fullLayout) return;
+    var b   = getXAxisBounds();
+    var pxX = dateToPx(dateStr);
+    pxX = Math.max(b.leftPx, Math.min(b.rightPx, pxX));
+    var ps  = chartEl._fullLayout._size;
+    dragVLine.style.left   = pxX + "px";
+    dragVLine.style.top    = ps.t + "px";
+    dragVLine.style.height = ps.h + "px";
+    dragVLine.style.right  = "auto";
+  }
+
+  /* オーバーレイをプロットエリアに合わせて配置 */
+  function updateVlineOverlay(){
+    if(!chartEl._fullLayout) return;
+    var b  = getXAxisBounds();
+    var ps = chartEl._fullLayout._size;
+    vlineOverlay.style.left   = b.leftPx + "px";
+    vlineOverlay.style.top    = ps.t + "px";
+    vlineOverlay.style.width  = b.wPx + "px";
+    vlineOverlay.style.height = ps.h + "px";
+    vlineOverlay.style.display = "block";
+  }
+
+  function hideVlineOverlay(){
+    vlineOverlay.style.display = "none";
+  }
+
+  /* ================================================================
+     Price line UI helpers
+     ================================================================ */
+  function showPriceControls(show){
+    var d = show ? "inline-block" : "none";
+    badge.style.display     = d;
+    dirSel.style.display    = d;
+    regBtn.style.display    = d;
+    cancelBtn.style.display = d;
+    dragLine.style.display  = show ? "block" : "none";
+    toolbar.classList.remove("active-price","active-date");
+    if(show) toolbar.classList.add("active-price");
+    toggleBtn.classList.toggle("active", show);
+    toggleBtn.textContent = show ? "✏️ ドラッグで移動" : "📏 アラートラインを設定";
+  }
+
+  function updatePriceDisplay(){
+    var txt = currentPrice.toLocaleString() + "円";
+    badge.textContent     = "💰 " + txt;
+    dragLabel.textContent = txt;
+    dirSel.value = currentPrice >= lastClose ? "above" : "below";
+  }
+
+  /* ================================================================
+     Date line UI helpers
+     ================================================================ */
+  function showDateControls(show){
+    var d = show ? "inline-block" : "none";
+    dateBadge.style.display    = d;
+    labelInput.style.display   = d;
+    dateRegBtn.style.display   = d;
+    dateCancelBtn.style.display = d;
+    dragVLine.style.display    = show ? "block" : "none";
+    toolbar.classList.remove("active-price","active-date");
+    if(show) toolbar.classList.add("active-date");
+    dateToggleBtn.classList.toggle("active", show);
+    dateToggleBtn.textContent = show ? "✏️ ドラッグで移動" : "📅 日付アラートを設定";
+    /* オーバーレイ: dateモード中はプロット操作をブロック */
+    if(show){ updateVlineOverlay(); } else { hideVlineOverlay(); }
+  }
+
+  function updateDateDisplay(){
+    dateBadge.textContent    = "📅 " + currentDate;
+    dragVLabel.textContent   = currentDate;
+  }
+
+  /* ================================================================
+     Price toggle button
+     ================================================================ */
+  toggleBtn.addEventListener("click",function(){
+    if(!lineVisible){
+      // Deactivate date mode first
+      if(vlineVisible){ vlineVisible=false; showDateControls(false); }
+      lineVisible = true;
+      showPriceControls(true);
+      currentPrice = Math.round(lastClose);
+      positionLine(currentPrice);
+      updatePriceDisplay();
+    } else {
+      lineVisible = false;
+      showPriceControls(false);
+    }
+  });
+
+  /* ================================================================
+     Date toggle button
+     ================================================================ */
+  dateToggleBtn.addEventListener("click",function(){
+    if(!vlineVisible){
+      // Deactivate price mode first
+      if(lineVisible){ lineVisible=false; showPriceControls(false); }
+      vlineVisible = true;
+      showDateControls(true);
+      labelInput.value = "";
+      if(chartEl._fullLayout){
+        var b  = getXAxisBounds();
+        var t0 = new Date(b.xa.range[0]).getTime();
+        var t1 = new Date(b.xa.range[1]).getTime();
+
+        /* 今日の日付を初期位置に設定。
+           表示範囲外の場合は範囲の右端（最新日）にフォールバック */
+        var todayMs = Date.now();
+        var todayStr = snapToTradingDay(_isoDateFromMs(todayMs));
+        var todayT = new Date(todayStr + "T12:00:00").getTime();
+
+        if(todayT >= t0 && todayT <= t1){
+          currentDate = todayStr;
+        } else if(todayT > t1){
+          /* 今日が表示範囲より未来 → 範囲の右端仙8近 */
+          currentDate = snapToTradingDay(_isoDateFromMs(t1));
+        } else {
+          /* 今日が表示範囲より過去 → 範囲の右端仙8近 */
+          currentDate = snapToTradingDay(_isoDateFromMs(t1 - (t1-t0)*0.05));
+        }
+        positionVLine(currentDate);
+        updateDateDisplay();
+      }
+    } else {
+      vlineVisible = false;
+      showDateControls(false);
+    }
+  });
+
+  /* ================================================================
+     Price Register / Cancel
+     ================================================================ */
+  regBtn.addEventListener("click",function(){
+    setComponentValue({price:currentPrice, direction:dirSel.value, _id:"alert_"+Date.now()});
+    lineVisible = false;
+    showPriceControls(false);
+  });
+
+  cancelBtn.addEventListener("click",function(){
+    lineVisible = false;
+    showPriceControls(false);
+  });
+
+  /* ================================================================
+     Date Register / Cancel
+     ================================================================ */
+  dateRegBtn.addEventListener("click",function(){
+    var lbl = labelInput.value.trim() || currentDate;
+    setComponentValue({date:currentDate, label:lbl, _id:"date_"+Date.now()});
+    vlineVisible = false;
+    showDateControls(false);
+  });
+
+  dateCancelBtn.addEventListener("click",function(){
+    vlineVisible = false;
+    showDateControls(false);
+  });
+
+  /* ================================================================
+     Price line drag — mouse
+     ================================================================ */
+  dragLine.addEventListener("mousedown",function(e){
+    isDragging = true;
+    dragStartMouseY = e.clientY;
+    dragStartTop    = parseFloat(dragLine.style.top) || 0;
+    e.preventDefault();
+    e.stopPropagation();
+    document.body.style.cursor     = "ns-resize";
+    document.body.style.userSelect = "none";
+  });
+
+  /* ================================================================
+     Date line drag — mouse (directly on the vline)
+     ================================================================ */
+  dragVLine.addEventListener("mousedown",function(e){
+    isDraggingV = true;
+    dragStartMouseX = e.clientX;
+    dragStartLeft   = parseFloat(dragVLine.style.left) || 0;
+    e.preventDefault();
+    e.stopPropagation();
+    document.body.style.cursor     = "ew-resize";
+    document.body.style.userSelect = "none";
+  });
+
+  /* ================================================================
+     Overlay mousedown — click anywhere in the plot area to place/drag
+     (also blocks chart pan/zoom while in date mode)
+     ================================================================ */
+  vlineOverlay.addEventListener("mousedown",function(e){
+    var rect   = chartEl.getBoundingClientRect();
+    var pixX   = e.clientX - rect.left;
+    var bx     = getXAxisBounds();
+    pixX = Math.max(bx.leftPx, Math.min(bx.rightPx, pixX));
+
+    /* Snap vline to click position immediately */
+    dragVLine.style.left = pixX + "px";
+    currentDate = pixelToDate(pixX);
+    updateDateDisplay();
+
+    /* Start dragging from here */
+    isDraggingV     = true;
+    dragStartMouseX = e.clientX;
+    dragStartLeft   = pixX;
+    e.preventDefault();
+    e.stopPropagation();
+    document.body.style.cursor     = "ew-resize";
+    document.body.style.userSelect = "none";
+  });
+
+
+  /* ================================================================
+     Combined mousemove
+     ================================================================ */
+  document.addEventListener("mousemove",function(e){
+    if(isDragging){
+      var dy     = e.clientY - dragStartMouseY;
+      var newTop = dragStartTop + dy;
+      var b      = getAxisBounds();
+      newTop = Math.max(b.topPx, Math.min(b.botPx, newTop));
+      dragLine.style.top = newTop + "px";
+      currentPrice = Math.round(pixelToDataY(newTop));
+      updatePriceDisplay();
+    }
+    if(isDraggingV){
+      var dx      = e.clientX - dragStartMouseX;
+      var newLeft = dragStartLeft + dx;
+      var bx      = getXAxisBounds();
+      newLeft = Math.max(bx.leftPx, Math.min(bx.rightPx, newLeft));
+      dragVLine.style.left = newLeft + "px";
+      currentDate = pixelToDate(newLeft);
+      updateDateDisplay();
+    }
+  });
+
+  /* ================================================================
+     Combined mouseup
+     ================================================================ */
+  document.addEventListener("mouseup",function(){
+    if(isDragging){
+      isDragging = false;
+      document.body.style.cursor     = "";
+      document.body.style.userSelect = "";
+    }
+    if(isDraggingV){
+      isDraggingV = false;
+      document.body.style.cursor     = "";
+      document.body.style.userSelect = "";
+      positionVLine(currentDate);
+    }
+  });
+
+  /* ================================================================
+     Price line touch events
+     ================================================================ */
+  dragLine.addEventListener("touchstart",function(e){
+    isDragging = true;
+    dragStartMouseY = e.touches[0].clientY;
+    dragStartTop    = parseFloat(dragLine.style.top) || 0;
+    e.preventDefault();
+  },{passive:false});
+
+  /* ================================================================
+     Date line touch events
+     ================================================================ */
+  dragVLine.addEventListener("touchstart",function(e){
+    isDraggingV = true;
+    dragStartMouseX = e.touches[0].clientX;
+    dragStartLeft   = parseFloat(dragVLine.style.left) || 0;
+    e.preventDefault();
+  },{passive:false});
+
+  document.addEventListener("touchmove",function(e){
+    if(isDragging){
+      var dy     = e.touches[0].clientY - dragStartMouseY;
+      var newTop = dragStartTop + dy;
+      var b      = getAxisBounds();
+      newTop = Math.max(b.topPx, Math.min(b.botPx, newTop));
+      dragLine.style.top = newTop + "px";
+      currentPrice = Math.round(pixelToDataY(newTop));
+      updatePriceDisplay();
+    }
+    if(isDraggingV){
+      var dx      = e.touches[0].clientX - dragStartMouseX;
+      var newLeft = dragStartLeft + dx;
+      var bx      = getXAxisBounds();
+      newLeft = Math.max(bx.leftPx, Math.min(bx.rightPx, newLeft));
+      dragVLine.style.left = newLeft + "px";
+      currentDate = pixelToDate(newLeft);
+      updateDateDisplay();
+    }
+  },{passive:true});
+
+  document.addEventListener("touchend",function(){
+    isDragging  = false;
+    if(isDraggingV){
+      isDraggingV = false;
+      positionVLine(currentDate);
+    }
+  });
+
+  /* ================================================================
+     Chart zoom/scroll → reposition overlay lines
+     ================================================================ */
+  function onChartRelayout(){
+    if(lineVisible  && !isDragging)  positionLine(currentPrice);
+    if(vlineVisible && !isDraggingV){
+      positionVLine(currentDate);
+      updateVlineOverlay(); /* オーバーレイも再配置 */
+    }
+  }
+
+  /* ================================================================
+     Render — called by Streamlit on every rerun
+     ================================================================ */
+  function onRender(args){
+    var fig    = JSON.parse(args.figure_json);
+    var height = args.component_height || 700;
+    lastClose  = args.current_price || 0;
+
+    lineVisible  = false;
+    vlineVisible = false;
+    showPriceControls(false);
+    showDateControls(false);
+
+    chartEl.style.height = height + "px";
+
+    var config = {
+      scrollZoom: true,
+      displaylogo: false,
+      responsive: true,
+      modeBarButtonsToAdd: ["drawline","eraseshape"]
+    };
+
+    fig.layout.uirevision = "constant_revision";
+
+    Plotly.react(chartEl, fig.data, fig.layout, config).then(function(){
+      loadingEl.classList.add("hidden");
+
+      // Initialize lastTrendlines cache from current chart layout shapes
+      var initialShapes = chartEl.layout.shapes || [];
+      lastTrendlines = initialShapes.filter(function(s) {
+        return s.type === 'line';
+      }).map(function(s) {
+        return {
+          x0: normalizeDate(s.x0),
+          y0: normalizePrice(s.y0),
+          x1: normalizeDate(s.x1),
+          y1: normalizePrice(s.y1),
+          yref: s.yref
+        };
+      });
+
+      // Bind event listeners only once
+      if (!hasPlotted) {
+        chartEl.on("plotly_relayout", onChartRelayout);
+
+        /* Trendline change detection */
+        chartEl.on("plotly_relayout", function(eventData){
+          var rawShapes = chartEl.layout.shapes || [];
+          var lineShapes = rawShapes.filter(function(s) {
+            return s.type === 'line';
+          }).map(function(s) {
+            return {
+              x0: s.x0,
+              y0: s.y0,
+              x1: s.x1,
+              y1: s.y1,
+              yref: s.yref
+            };
+          });
+
+          // If the list of lines has changed (added, modified, or deleted), notify Streamlit
+          if (!trendlinesEqual(lineShapes, lastTrendlines)) {
+            var normalizedShapes = lineShapes.map(function(s) {
+              return {
+                x0: normalizeDate(s.x0),
+                y0: normalizePrice(s.y0),
+                x1: normalizeDate(s.x1),
+                y1: normalizePrice(s.y1),
+                yref: s.yref
+              };
+            });
+            lastTrendlines = normalizedShapes;
+            setComponentValue({
+              trendlines: normalizedShapes,
+              _id: "trendlines_" + Date.now()
+            });
+          }
+        });
+        hasPlotted = true;
+      }
+
+      setFrameHeight(height + 50);
+    });
+  }
+
+  /* ================================================================
+     Streamlit component lifecycle
+     ================================================================ */
+  window.addEventListener("message",function(event){
+    if(event.data.type === "streamlit:render"){
+      onRender(event.data.args);
+    }
+  });
+
+  sendMsg("streamlit:componentReady",{apiVersion:1});
+
+})();
+</script>
+</body>
+</html>

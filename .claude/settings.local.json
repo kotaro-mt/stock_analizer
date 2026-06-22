@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh repo:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(/c/Users/matsu/anaconda3/python.exe -c \"import sys; print\\(sys.version\\); import torch, numpy, pandas, sklearn, joblib, yfinance, pyarrow, tqdm, streamlit, plotly; print\\('torch', torch.__version__\\); print\\('numpy', numpy.__version__\\); print\\('pandas', pandas.__version__\\); print\\('yfinance', yfinance.__version__\\); print\\('streamlit', streamlit.__version__\\); print\\('plotly', plotly.__version__\\); print\\('sklearn', sklearn.__version__\\); print\\('pyarrow', pyarrow.__version__\\); print\\('joblib', joblib.__version__\\); print\\('tqdm', tqdm.__version__\\)\")",
+      "Bash(/c/Users/matsu/anaconda3/python.exe -c 'import __TRACKED_VAR__; v=getattr\\(__TRACKED_VAR__,'\\\\''__version__'\\\\'','\\\\''?'\\\\''\\); print\\('\\\\''OK'\\\\'', '\\\\''__TRACKED_VAR__'\\\\'', v\\)')",
+      "Bash(/c/Users/matsu/anaconda3/python.exe -m pip install --index-url https://download.pytorch.org/whl/cpu torch)",
+      "Bash(/c/Users/matsu/anaconda3/python.exe -c \"import torch; print\\('torch', torch.__version__\\); print\\('cpu:', not torch.cuda.is_available\\(\\)\\)\")",
+      "Bash(/c/Users/matsu/anaconda3/python.exe prepare.py --smoke)",
+      "Bash(/c/Users/matsu/anaconda3/python.exe prepare.py)",
+      "Bash(/c/Users/matsu/anaconda3/python.exe train.py)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(KMP_DUPLICATE_LIB_OK=TRUE /c/Users/matsu/anaconda3/python.exe -c \"import ast; ast.parse\\(open\\('prepare.py', encoding='utf-8'\\).read\\(\\)\\); print\\('syntax OK'\\)\")",
+      "Bash(KMP_DUPLICATE_LIB_OK=TRUE /c/Users/matsu/anaconda3/python.exe prepare.py --smoke)",
+      "Bash(KMP_DUPLICATE_LIB_OK=TRUE /c/Users/matsu/anaconda3/python.exe prepare.py --force)",
+      "Bash(KMP_DUPLICATE_LIB_OK=TRUE /c/Users/matsu/anaconda3/python.exe train.py)",
+      "Bash(/c/Users/matsu/anaconda3/python.exe -u tuner.py --interval 1wk --recursive --target 0.80 --max-restarts 14 --max-passes 6)",
+      "Bash(/c/Users/matsu/anaconda3/python.exe -c ':*)",
+      "Bash(/c/Users/matsu/anaconda3/python.exe -u tuner.py --interval 1wk --recursive --target 0.80 --max-restarts 6 --max-passes 6)",
+      "Bash(/c/Users/matsu/anaconda3/python.exe -m py_compile c:/Users/matsu/OneDrive/claude/stock_future/chart_app.py c:/Users/matsu/OneDrive/claude/stock_future/universe.py c:/Users/matsu/OneDrive/claude/stock_future/data.py c:/Users/matsu/OneDrive/claude/stock_future/trendlines.py c:/Users/matsu/OneDrive/claude/stock_future/tuner.py)",
+      "Bash(/c/Users/matsu/anaconda3/python.exe -m py_compile c:/Users/matsu/OneDrive/claude/stock_future/chart_app.py)",
+      "Bash(/c/Users/matsu/anaconda3/python.exe -m py_compile chart_app.py)",
+      "Bash(/c/Users/matsu/anaconda3/python.exe -c \"import chart_app; css = chart_app.THEME_CSS; assert 'kt-masthead-title' in css; assert 'kt-kicker-issue' in css; assert 'kt-masthead-byline' in css; print\\('CSS len:', len\\(css\\)\\); print\\('OK'\\)\")",
+      "Bash(ls -la /c/Users/matsu/OneDrive/claude/stock_future/cache/*.parquet)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\matsu\\OneDrive\\claude\\stock_future\\screenshots"
+    ]
+  }
+}

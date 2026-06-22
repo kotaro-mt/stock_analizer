@@ -1,0 +1,5 @@
+timestamp	val_sharpe	val_mse	train_time	params	notes
+2026-04-10 17:14:02	1.293627	0.000414	897.2	20756	baseline LSTM hidden=64 1layer MSE
+2026-04-10 17:31:03	1.284787	0.000412	758.4	20756	iter2: SmoothL1 (Huber) loss instead of MSE
+2026-04-10 17:39:31	1.293627	0.000414	394.5	20756	iter3: revert Huber->MSE; EPOCHS 15->8 (best was epoch 5)
+2026-04-10 18:23:52	0.627626	0.000255	717.6	21524	phaseA baseline: residual labels + 3 turnover features (F=13)
