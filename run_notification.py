@@ -361,12 +361,11 @@ def main() -> None:
             continue
 
         checker = checker_cls()
-        # For test session, bypass deduplication by using an empty/temporary state
-        # so that active alerts are always detected and sent for verification.
-        if args.session == "test":
-            ck_state = {}
-        else:
-            ck_state = state.setdefault(checker_type, {})
+        # Use the real notification state for deduplication in all sessions,
+        # including test. This makes the test session produce the same results
+        # as a regular morning/evening run. State is never *saved* for test
+        # sessions (see below), so the dedup entries won't persist.
+        ck_state = state.setdefault(checker_type, {})
         logger.info("Running checker: %s", checker_type)
 
         for ticker, name in tickers.items():
