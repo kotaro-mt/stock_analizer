@@ -103,8 +103,8 @@
       "price_alerts": [],
       "trendlines": [],
       "date_alerts": [],
-      "notification_mode": "off",
-      "notifications_enabled": false
+      "notification_mode": "alerts_only",
+      "notifications_enabled": true
     },
     "NVDA": {
       "price_alerts": [],
