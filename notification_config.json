@@ -56,10 +56,6 @@
       "price_alert": false,
       "date_alerts": [
         {
-          "date": "2026-09-15",
-          "label": "2026-09-15"
-        },
-        {
           "date": "2026-06-24",
           "label": "2026-06-24"
         }
