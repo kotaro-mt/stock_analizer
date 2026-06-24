@@ -11,6 +11,10 @@
     "AMZN": {
       "last_cross": "dc",
       "cross_date": "2026-06-26"
+    },
+    "NVDA": {
+      "last_cross": "dc",
+      "cross_date": "2026-06-26"
     }
   },
   "daily_macd_cross": {},
