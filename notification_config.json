@@ -118,15 +118,17 @@
       "date_alerts": [],
       "trendlines": [
         {
-          "x0": "2026-03-31",
-          "y0": 50518.18,
-          "x1": "2026-07-10",
-          "y1": 67444.21,
+          "x0": "2026-07-10",
+          "y0": 68121.25,
+          "x1": "2026-06-09",
+          "y1": 58981.2,
           "yref": "y",
           "target": "price"
         }
       ],
-      "trendline_alert": true
+      "trendline_alert": true,
+      "notification_mode": "all",
+      "notifications_enabled": true
     }
   }
 }
