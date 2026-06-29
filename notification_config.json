@@ -116,16 +116,7 @@
     "^N225": {
       "price_alerts": [],
       "date_alerts": [],
-      "trendlines": [
-        {
-          "x0": "2026-07-10",
-          "y0": 68121.25,
-          "x1": "2026-06-09",
-          "y1": 58981.2,
-          "yref": "y",
-          "target": "price"
-        }
-      ],
+      "trendlines": [],
       "trendline_alert": true,
       "notification_mode": "all",
       "notifications_enabled": true
