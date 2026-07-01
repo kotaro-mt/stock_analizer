@@ -3,6 +3,18 @@
     "5253.T": {
       "last_cross": "dc",
       "cross_date": "2026-06-26"
+    },
+    "GOOG": {
+      "last_cross": "dc",
+      "cross_date": "2026-06-26"
+    },
+    "AMZN": {
+      "last_cross": "dc",
+      "cross_date": "2026-06-26"
+    },
+    "NVDA": {
+      "last_cross": "dc",
+      "cross_date": "2026-06-26"
     }
   },
   "daily_macd_cross": {},
@@ -12,5 +24,10 @@
       "price": 2434.5
     }
   },
-  "trendline_alert": {}
+  "trendline_alert": {
+    "7203.T_2026-03-02_3950.0_2026-06-19_2883.4": {
+      "notified": true,
+      "at": "2026-06-29T13:54:49.912168+09:00"
+    }
+  }
 }
