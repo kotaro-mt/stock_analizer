@@ -120,6 +120,17 @@
       "trendline_alert": true,
       "notification_mode": "all",
       "notifications_enabled": true
+    },
+    "ONON": {
+      "notification_mode": "all",
+      "notifications_enabled": true,
+      "weekly_macd_cross": true,
+      "daily_macd_cross": false,
+      "price_alert": false,
+      "price_alerts": [],
+      "date_alerts": [],
+      "trendline_alert": true,
+      "trendlines": []
     }
   }
 }
