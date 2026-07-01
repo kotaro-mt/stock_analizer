@@ -1,18 +1,17 @@
 name: Run Stock Notifications
 
 on:
-  # Scheduled runs are handled externally by cron-job.org.
-  # Keep this workflow manual/API-triggered only to avoid duplicate alerts.
+  schedule:
+    # JST 9:05 is UTC 0:05. Run Monday to Friday.
+    - cron: '5 0 * * 1-5'
+    # JST 15:35 is UTC 6:35. Run Monday to Friday.
+    - cron: '35 6 * * 1-5'
   workflow_dispatch:
     inputs:
       session:
-        description: 'Session to run: auto decides by time, test sends a test notification'
-        required: false
-        default: 'auto'
-        type: choice
-        options:
-          - auto
-          - test
+        description: 'Session to run (morning, evening, test)'
+        required: true
+        default: 'morning'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
@@ -44,31 +43,27 @@ jobs:
       - name: Determine session parameter
         id: session-selector
         run: |
-          REQUESTED_SESSION="${{ github.event.inputs.session }}"
-          if [ -z "$REQUESTED_SESSION" ]; then
-            REQUESTED_SESSION="auto"
-          fi
-
-          if [ "$REQUESTED_SESSION" = "test" ]; then
-            echo "SESSION=test" >> $GITHUB_ENV
-            echo "TEST_FLAG=--test" >> $GITHUB_ENV
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "SESSION=${{ github.event.inputs.session }}" >> $GITHUB_ENV
+          elif [ "${{ github.event.schedule }}" = "5 0 * * 1-5" ]; then
+            echo "SESSION=morning" >> $GITHUB_ENV
+          elif [ "${{ github.event.schedule }}" = "35 6 * * 1-5" ]; then
+            echo "SESSION=evening" >> $GITHUB_ENV
           else
-            # Auto mode: one cron-job.org task can call this workflow at any time.
-            # UTC < 03:00 is treated as the morning session; later runs are evening.
+            # Fallback based on system time if triggered by other schedules
             HOUR=$(date -u +%H)
             if [ "$HOUR" -lt "3" ]; then
               echo "SESSION=morning" >> $GITHUB_ENV
             else
               echo "SESSION=evening" >> $GITHUB_ENV
             fi
-            echo "TEST_FLAG=" >> $GITHUB_ENV
           fi
 
       - name: Run notification check
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          python run_notification.py --session ${{ env.SESSION }} ${{ env.TEST_FLAG }}
+          python run_notification.py --session ${{ env.SESSION }}
 
       - name: Commit and push state changes
         run: |

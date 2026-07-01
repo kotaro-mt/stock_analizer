@@ -1,0 +1,19 @@
+# stock_future — chart-analysis tool (trendline + S/R auto-detection)
+#   /c/Users/matsu/anaconda3/python.exe -m pip install -r requirements.txt
+#
+# torch / scikit-learn are kept only to keep legacy/ (old ML project) runnable.
+numpy>=1.26
+pandas>=2.1
+scipy>=1.11
+yfinance>=0.2
+pyarrow>=15.0
+tqdm>=4.66
+streamlit>=1.35
+plotly>=5.20
+joblib>=1.3
+# Notification system
+python-dotenv>=1.0
+requests>=2.31
+# Legacy-only (kept for reproducibility of the archived ML project)
+torch>=2.5
+scikit-learn>=1.4

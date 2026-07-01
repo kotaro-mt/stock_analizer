@@ -1,0 +1,38 @@
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "permissions": {
+    "allow": [
+      "WebFetch",
+      "WebSearch",
+      "Bash(curl*)",
+      "Bash(mkdir*)",
+      "Bash(/c/Users/matsu/anaconda3/python.exe*)",
+      "Bash(/c/Users/matsu/anaconda3/Scripts/streamlit*)",
+      "Bash(/c/Users/matsu/anaconda3/Scripts/playwright*)",
+      "Bash(npx playwright*)",
+      "Bash(KMP_DUPLICATE_LIB_OK=TRUE /c/Users/matsu/anaconda3/python.exe -c \"import ast; ast.parse\\(open\\('prepare.py', encoding='utf-8'\\).read\\(\\)\\); ast.parse\\(open\\('train.py', encoding='utf-8'\\).read\\(\\)\\); print\\('syntax OK'\\)\")",
+      "Bash(mkdir -p legacy/artifacts)",
+      "Bash(mv train.py prepare.py app.py program.md results.tsv results_phase0.tsv legacy/)",
+      "Bash(mv artifacts/model.pt artifacts/scaler.npz legacy/artifacts/)",
+      "Bash(/c/Users/matsu/anaconda3/python.exe -c \"import scipy; print\\('scipy version:', scipy.__version__\\)\")",
+      "Bash(/c/Users/matsu/anaconda3/python.exe -c ':*)",
+      "Bash(ls cache/*.parquet)",
+      "Bash(/c/Users/matsu/anaconda3/python.exe tuner.py)",
+      "Bash(/c/Users/matsu/anaconda3/python.exe -c \"import chart_app; print\\('import OK'\\)\")",
+      "Bash(tee /tmp/tune_out.log)",
+      "Bash(PYTHONIOENCODING=utf-8 /c/Users/matsu/anaconda3/python.exe tuner.py)",
+      "Bash(tee /tmp/tuner.log)",
+      "Bash(/c/Users/matsu/anaconda3/python.exe -m py_compile \"c:/Users/matsu/OneDrive/claude/stock_future/jquants.py\" \"c:/Users/matsu/OneDrive/claude/stock_future/chart_app.py\")",
+      "Bash(rm -rf cache/jquants)",
+      "Bash(/c/Users/matsu/anaconda3/python.exe -c \"import ast; ast.parse\\(open\\('chart_app.py', encoding='utf-8'\\).read\\(\\)\\); print\\('ok'\\)\")",
+      "Bash(grep -rn \"frequency\\\\|interval\\\\|intraday\\\\|weekly\\\\|1wk\\\\|5m\" /c/Users/matsu/OneDrive/claude/stock_future/*.py)",
+      "Bash(python3)",
+      "Bash(python3 -c \"import pandas as pd; df = pd.read_parquet\\('cache/7203_T.parquet'\\); print\\('Shape:', df.shape\\); print\\('Cols:', df.columns.tolist\\(\\)\\); print\\('First date:', df.index[0]\\); print\\('Last date:', df.index[-1]\\)\")",
+      "Bash(/c/Users/matsu/anaconda3/python.exe -c \"import tuner; print\\('ok'\\); print\\(tuner.INTERVAL_FORWARD_BARS\\); print\\(tuner._param_path\\('1d'\\)\\); print\\(tuner._param_path\\('1wk'\\)\\); print\\(tuner._param_path\\('5m'\\)\\)\")",
+      "Bash(/c/Users/matsu/anaconda3/python.exe -c \"import data; from universe import UNIVERSE; tickers = [t for t,_ in UNIVERSE]; print\\('universe size:', len\\(tickers\\)\\); print\\('daily cached:', len\\(data.available_tickers\\('1d'\\)\\)\\); print\\('1wk cached:', len\\(data.available_tickers\\('1wk'\\)\\)\\); print\\('5m cached:', len\\(data.available_tickers\\('5m'\\)\\)\\)\")"
+    ]
+  }
+  
+}

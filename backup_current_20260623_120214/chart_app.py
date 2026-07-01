@@ -20,7 +20,6 @@ from data import get_ticker_name, load_ohlcv, normalise_ticker
 from evaluator import EvalParams, evaluate_lines
 from indicators import ichimoku, macd, rsi, sma, volume_ma
 from git_utils import git_push_changes
-from alert_checker import get_weekly_macd_status
 from trendlines import (
     Line,
     TrendParams,
@@ -521,155 +520,6 @@ def load_tuned_params(interval: str = "1d") -> tuple[TrendParams, EvalParams]:
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_chart_data(ticker: str, interval: str = "1d") -> pd.DataFrame | None:
     return load_ohlcv(ticker, auto_download=True, interval=interval)
-
-
-@st.cache_data(ttl=900, show_spinner=False)
-def scan_nikkei225_weekly_macd_cross(condition: str) -> pd.DataFrame:
-    """Find Nikkei 225 tickers whose latest weekly MACD crossed GC/DC."""
-    rows: list[dict[str, object]] = []
-    names = all_names()
-    wanted_cross = condition.lower()
-    condition_label = "GC" if wanted_cross == "gc" else "DC"
-
-    for ticker, display_name, _sector in UNIVERSE:
-        name = names.get(ticker, display_name)
-        try:
-            status = get_weekly_macd_status(ticker, name)
-        except Exception:
-            continue
-        if status is None or status.cross_type != wanted_cross:
-            continue
-
-        rows.append(
-            {
-                "銘柄コード": status.ticker,
-                "銘柄名": status.name,
-                "条件": condition_label,
-                "判定日": status.bar_date,
-                "終値": round(status.close_price, 2),
-                "MACD": round(status.macd_val, 4),
-                "Signal": round(status.signal_val, 4),
-                "Hist": round(status.hist_val, 4),
-            }
-        )
-
-    return pd.DataFrame(rows)
-
-
-@st.cache_data(ttl=900, show_spinner=False)
-def scan_nikkei225_daily_ytd_extreme(condition: str) -> pd.DataFrame:
-    """Find Nikkei 225 tickers making a year-to-date high/low on daily bars."""
-    rows: list[dict[str, object]] = []
-    names = all_names()
-    is_high = condition == "年初来高値"
-
-    for ticker, display_name, _sector in UNIVERSE:
-        name = names.get(ticker, display_name)
-        try:
-            df = load_ohlcv(ticker, auto_download=True, interval="1d")
-        except Exception:
-            continue
-        if df is None or df.empty:
-            continue
-
-        df = df.dropna(subset=["High", "Low", "Close"]).copy()
-        if df.empty:
-            continue
-        latest_date = pd.Timestamp(df.index.max())
-        year_start = pd.Timestamp(year=latest_date.year, month=1, day=1)
-        ytd = df[df.index >= year_start]
-        if ytd.empty:
-            continue
-
-        latest = ytd.iloc[-1]
-        ytd_high = float(ytd["High"].max())
-        ytd_low = float(ytd["Low"].min())
-        latest_high = float(latest["High"])
-        latest_low = float(latest["Low"])
-        matched = latest_high >= ytd_high if is_high else latest_low <= ytd_low
-        if not matched:
-            continue
-
-        rows.append(
-            {
-                "銘柄コード": ticker,
-                "銘柄名": name,
-                "条件": condition,
-                "判定日": str(latest_date.date()),
-                "終値": round(float(latest["Close"]), 2),
-                "年初来高値": round(ytd_high, 2),
-                "年初来安値": round(ytd_low, 2),
-            }
-        )
-
-    return pd.DataFrame(rows)
-
-
-def _dividend_yield_percent(ticker: str, close_price: float) -> float | None:
-    """Return dividend yield as percent using dividend-per-share first."""
-    fund = load_fundamentals(ticker)
-    for candidate in (fund.get("dividend_rate"), fund.get("trailing_dividend_rate")):
-        if candidate is None:
-            continue
-        try:
-            annual_dps = float(candidate)
-        except (TypeError, ValueError):
-            continue
-        if annual_dps <= 0 or close_price <= 0:
-            return 0.0
-        return annual_dps / close_price * 100
-
-    for candidate in (fund.get("dividend_yield"), fund.get("trailing_dividend_yield")):
-        if candidate is None:
-            continue
-        try:
-            raw_yield = float(candidate)
-        except (TypeError, ValueError):
-            continue
-        return raw_yield * 100 if raw_yield <= 1 else raw_yield
-
-    return None
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def scan_nikkei225_dividend_yield(min_yield_pct: float) -> pd.DataFrame:
-    """Find Nikkei 225 tickers with dividend yield at or above a threshold."""
-    rows: list[dict[str, object]] = []
-    names = all_names()
-
-    for ticker, display_name, _sector in UNIVERSE:
-        name = names.get(ticker, display_name)
-        try:
-            df = load_ohlcv(ticker, auto_download=True, interval="1d")
-        except Exception:
-            continue
-        if df is None or df.empty or "Close" not in df:
-            continue
-
-        close = df["Close"].dropna()
-        if close.empty:
-            continue
-        close_price = float(close.iloc[-1])
-        div_yield = _dividend_yield_percent(ticker, close_price)
-        if div_yield is None or div_yield < min_yield_pct:
-            continue
-
-        latest_date = pd.Timestamp(close.index[-1])
-        rows.append(
-            {
-                "銘柄コード": ticker,
-                "銘柄名": name,
-                "条件": f"配当利回り {min_yield_pct:.2f}%以上",
-                "判定日": str(latest_date.date()),
-                "終値": round(close_price, 2),
-                "配当利回り": round(div_yield, 2),
-            }
-        )
-
-    out = pd.DataFrame(rows)
-    if out.empty:
-        return out
-    return out.sort_values("配当利回り", ascending=False)
 
 
 def get_default_ticker() -> str:
@@ -1873,24 +1723,6 @@ def _render_ticker_panel(name_lookup: dict[str, str]) -> None:
     else:
         favorite_rows = ['<div class="rp-empty">お気に入りはまだありません</div>']
 
-    search_result_records = st.session_state.get("_stock_search_results", [])
-    search_condition = st.session_state.get("_stock_search_condition_label", "")
-    if search_result_records:
-        search_rows = []
-        if search_condition:
-            search_rows.append(
-                f'<div class="rp-sector">直前の検索結果: {_html.escape(search_condition)}</div>'
-            )
-        for item in search_result_records:
-            code = str(item.get("銘柄コード", ""))
-            name = str(item.get("銘柄名", name_lookup.get(code, code)))
-            condition = str(item.get("条件", ""))
-            bar_date = str(item.get("判定日", ""))
-            label_parts = [part for part in [name, condition, bar_date] if part]
-            search_rows.append(_row(code, " / ".join(label_parts)))
-    else:
-        search_rows = ['<div class="rp-empty">検索結果はまだありません</div>']
-
     panel_html = f"""
 <style>
 #rightTickerPanel {{
@@ -2185,14 +2017,12 @@ section.main {{
     <div class="rp-tabs">
       <button type="button" class="rp-tab is-active" onclick="switchTickerTab('nikkei', this)">日経225</button>
       <button type="button" class="rp-tab" onclick="switchTickerTab('index', this)">指数</button>
-      <button type="button" class="rp-tab" onclick="switchTickerTab('search', this)">検索結果</button>
       <button type="button" class="rp-tab" onclick="switchTickerTab('favorite', this)">お気に入り</button>
       <button type="button" class="rp-tab" onclick="switchTickerTab('direct', this)">直接入力</button>
     </div>
     <div class="rp-scroll">
       <div id="rp-tab-nikkei">{''.join(nikkei_rows)}</div>
       <div id="rp-tab-index" style="display:none">{''.join(index_rows)}</div>
-      <div id="rp-tab-search" style="display:none">{''.join(search_rows)}</div>
       <div id="rp-tab-favorite" style="display:none">{''.join(favorite_rows)}</div>
       <div id="rp-tab-direct" style="display:none">
         <div class="rp-direct">
@@ -2233,10 +2063,6 @@ section.main {{
     if (selectedName) selectedName.textContent = pickedName;
     var url = new URL(window.parent.location.href);
     url.searchParams.set('ticker', code);
-    url.searchParams.set(
-      'panel_tab',
-      localStorage.getItem('rightTickerActiveTab') || 'nikkei'
-    );
     window.parent.history.replaceState({{}}, '', url.toString());
     sendTickerEvent({{type: 'select', code: code}}, url.toString());
   }};
@@ -2348,7 +2174,7 @@ section.main {{
   }};
 
   window.switchTickerTab = function(tab, btn) {{
-    ['nikkei', 'index', 'search', 'favorite', 'direct'].forEach(function(name) {{
+    ['nikkei', 'index', 'favorite', 'direct'].forEach(function(name) {{
       var el = document.getElementById('rp-tab-' + name);
       if (el) el.style.display = name === tab ? 'block' : 'none';
     }});
@@ -2385,17 +2211,11 @@ section.main {{
   }}
 
   try {{
-    var pageUrl = new URL(window.parent.location.href);
-    var forcedTab = pageUrl.searchParams.get('panel_tab');
-    var activeTab = forcedTab || localStorage.getItem('rightTickerActiveTab') || 'nikkei';
+    var activeTab = localStorage.getItem('rightTickerActiveTab') || 'nikkei';
     var activeButton = Array.from(document.querySelectorAll('.rp-tab')).find(function(btn) {{
       return (btn.getAttribute('onclick') || '').indexOf("'" + activeTab + "'") !== -1;
     }});
     if (activeButton) window.switchTickerTab(activeTab, activeButton);
-    if (forcedTab) {{
-      pageUrl.searchParams.delete('panel_tab');
-      window.parent.history.replaceState({{}}, '', pageUrl.toString());
-    }}
   }} catch (e) {{}}
 
   function applyWidth(width) {{
@@ -2504,32 +2324,6 @@ section.main {{
       currentFavoriteRows.innerHTML = nextFavoriteRows.innerHTML;
     }}
 
-    const nextSearchRows = panel.querySelector('#rp-tab-search');
-    const currentSearchRows = existingPanel.querySelector('#rp-tab-search');
-    if (nextSearchRows && currentSearchRows) {{
-      currentSearchRows.innerHTML = nextSearchRows.innerHTML;
-    }}
-
-    try {{
-      const pageUrl = new URL(window.parent.location.href);
-      const forcedTab = pageUrl.searchParams.get('panel_tab');
-      const desiredTab = forcedTab || localStorage.getItem('rightTickerActiveTab') || 'nikkei';
-      existingPanel.querySelectorAll('[id^="rp-tab-"]').forEach(function(el) {{
-        el.style.display = el.id === 'rp-tab-' + desiredTab ? 'block' : 'none';
-      }});
-      existingPanel.querySelectorAll('.rp-tab').forEach(function(btn) {{
-        btn.classList.toggle(
-          'is-active',
-          (btn.getAttribute('onclick') || '').indexOf("'" + desiredTab + "'") !== -1
-        );
-      }});
-      localStorage.setItem('rightTickerActiveTab', desiredTab);
-      if (forcedTab) {{
-        pageUrl.searchParams.delete('panel_tab');
-        window.parent.history.replaceState({{}}, '', pageUrl.toString());
-      }}
-    }} catch (e) {{}}
-
     const selectedCode = {json.dumps(safe_selected)};
     existingPanel.querySelectorAll('.rp-row').forEach(function(row) {{
       const code = row.querySelector('.rp-code');
@@ -2549,167 +2343,6 @@ section.main {{
 </script>
 """
     components.html(injector_html, height=0, width=0)
-
-
-def _remove_right_ticker_panel() -> None:
-    """Remove the floating ticker selector on non-chart modes."""
-    components.html(
-        """
-        <script>
-        (function() {
-          const doc = window.parent.document;
-          const panel = doc.getElementById('rightTickerPanel');
-          const style = doc.getElementById('rightTickerPanelStyle');
-          if (panel) panel.remove();
-          if (style) style.remove();
-          doc.documentElement.style.setProperty('--rightTickerReserved', '0px');
-          doc.querySelectorAll('[data-testid="stAppViewContainer"]').forEach(function(el) {
-            el.style.paddingRight = '0px';
-          });
-        })();
-        </script>
-        """,
-        height=0,
-        width=0,
-    )
-
-
-def _render_stock_search_mode() -> None:
-    """Render the Nikkei 225 stock-search screen."""
-    st.markdown(
-        """
-        <style>
-        .kt-masthead { display: none !important; }
-        [data-testid="stAppViewContainer"] {
-            padding-right: 0 !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    _remove_right_ticker_panel()
-
-    st.header("銘柄検索")
-    st.caption("日経225を対象に、テクニカル条件や配当利回りで銘柄を検索します。")
-
-    st.subheader("対象と検出条件")
-    target = st.selectbox(
-        "検索対象",
-        ["日経225"],
-        index=0,
-        disabled=True,
-    )
-    detector = st.selectbox(
-        "検出対象",
-        ["週足MACD", "日足 年初来高値/安値", "配当利回り"],
-        index=0,
-    )
-
-    condition_label = ""
-    min_yield_pct = 3.0
-    if detector == "週足MACD":
-        condition_label = st.radio(
-            "検出条件",
-            ["GC", "DC"],
-            index=0,
-            horizontal=True,
-        )
-    elif detector == "日足 年初来高値/安値":
-        condition_label = st.radio(
-            "検出条件",
-            ["年初来高値", "年初来安値"],
-            index=0,
-            horizontal=True,
-        )
-    elif detector == "配当利回り":
-        min_yield_pct = st.number_input(
-            "検出条件: 配当利回り",
-            min_value=0.0,
-            max_value=20.0,
-            value=3.0,
-            step=0.1,
-            format="%.1f",
-        )
-        condition_label = f"{min_yield_pct:.1f}%以上"
-
-    submitted = st.button("検索", type="primary")
-    if submitted:
-        search_request = {
-            "target": target,
-            "detector": detector,
-            "condition": condition_label,
-            "min_yield_pct": float(min_yield_pct),
-        }
-        search_target = search_request["target"]
-        search_detector = search_request["detector"]
-        selected_condition = search_request["condition"]
-
-        with st.spinner(
-            f"{search_target} の {search_detector} / {selected_condition} を検索しています..."
-        ):
-            if search_detector == "週足MACD":
-                result_df = scan_nikkei225_weekly_macd_cross(selected_condition)
-            elif search_detector == "日足 年初来高値/安値":
-                result_df = scan_nikkei225_daily_ytd_extreme(selected_condition)
-            elif search_detector == "配当利回り":
-                result_df = scan_nikkei225_dividend_yield(
-                    float(search_request["min_yield_pct"])
-                )
-            else:
-                result_df = pd.DataFrame()
-
-        st.session_state["stock_search_request"] = search_request
-        st.session_state["_stock_search_results"] = result_df.to_dict(orient="records")
-        st.session_state["_stock_search_condition_label"] = (
-            f"{search_target} / {search_detector} / {selected_condition}"
-        )
-    else:
-        search_request = st.session_state.get("stock_search_request")
-        result_df = pd.DataFrame(st.session_state.get("_stock_search_results", []))
-
-    if not search_request:
-        st.info("条件を選んで「検索」を押すと、該当銘柄がここに表示されます。")
-        return
-
-    search_target = search_request["target"]
-    search_detector = search_request["detector"]
-    selected_condition = search_request["condition"]
-
-    st.subheader("検索結果")
-    if result_df.empty:
-        st.warning(f"直近週で {selected_condition} に該当する銘柄はありませんでした。")
-        return
-
-    st.caption(f"{len(result_df)}件見つかりました。")
-    st.dataframe(
-        result_df,
-        hide_index=True,
-        use_container_width=True,
-        column_config={
-            "終値": st.column_config.NumberColumn("終値", format="%.2f"),
-            "MACD": st.column_config.NumberColumn("MACD", format="%.4f"),
-            "Signal": st.column_config.NumberColumn("Signal", format="%.4f"),
-            "Hist": st.column_config.NumberColumn("Hist", format="%.4f"),
-            "年初来高値": st.column_config.NumberColumn("年初来高値", format="%.2f"),
-            "年初来安値": st.column_config.NumberColumn("年初来安値", format="%.2f"),
-            "配当利回り": st.column_config.NumberColumn("配当利回り", format="%.2f%%"),
-        },
-    )
-
-    options = result_df["銘柄コード"].tolist()
-    names = dict(zip(result_df["銘柄コード"], result_df["銘柄名"]))
-    selected_ticker = st.selectbox(
-        "チャートで開く銘柄",
-        options,
-        format_func=lambda code: f"{code}  {names.get(code, '')}",
-    )
-    if st.button("チャートで開く", type="primary"):
-        st.session_state["selected_ticker"] = selected_ticker
-        st.session_state["_applied_query_ticker"] = selected_ticker
-        st.query_params["ticker"] = selected_ticker
-        st.query_params["mode"] = "chart"
-        st.query_params["panel_tab"] = "search"
-        st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -2754,22 +2387,13 @@ def main() -> None:
     name_lookup = all_names()
 
     # ----- Sidebar: App Mode Selector -----
-    if st.query_params.get("mode") == "chart":
-        st.session_state["app_mode"] = "チャート分析"
-        del st.query_params["mode"]
-
     st.sidebar.header("機能選択")
     app_mode = st.sidebar.selectbox(
         "モード選択",
-        ["チャート分析", "銘柄検索", "通知設定"],
+        ["チャート分析", "通知設定"],
         index=0,
-        label_visibility="collapsed",
-        key="app_mode",
+        label_visibility="collapsed"
     )
-
-    if app_mode == "銘柄検索":
-        _render_stock_search_mode()
-        return
 
     if app_mode == "通知設定":
         st.markdown(
@@ -2783,7 +2407,25 @@ def main() -> None:
             """,
             unsafe_allow_html=True,
         )
-        _remove_right_ticker_panel()
+        components.html(
+            """
+            <script>
+            (function() {
+              const doc = window.parent.document;
+              const panel = doc.getElementById('rightTickerPanel');
+              const style = doc.getElementById('rightTickerPanelStyle');
+              if (panel) panel.remove();
+              if (style) style.remove();
+              doc.documentElement.style.setProperty('--rightTickerReserved', '0px');
+              doc.querySelectorAll('[data-testid="stAppViewContainer"]').forEach(function(el) {
+                el.style.paddingRight = '0px';
+              });
+            })();
+            </script>
+            """,
+            height=0,
+            width=0,
+        )
         from notification_ui import show_notification_ui
         show_notification_ui(name_lookup)
         return
