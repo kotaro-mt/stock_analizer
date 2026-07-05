@@ -16,6 +16,7 @@ import pandas as pd
 
 ROOT = Path(__file__).parent
 CACHE_DIR = ROOT / "cache"
+PRICE_ADJUSTMENT_VERSION = "yfinance_auto_adjusted_v1"
 
 # Supported bar intervals. The daily cache predates this module and lives
 # in ``cache/*.parquet`` at the top level; weekly gets a per-interval
@@ -92,7 +93,9 @@ def _download_from_yfinance(
             ticker,
             period=period or cfg["period"],
             interval=interval,
-            auto_adjust=False,
+            # Keep the plotted OHLC series continuous across stock splits.
+            # Dividends and splits are reflected consistently in every bar.
+            auto_adjust=True,
             progress=False,
             threads=False,
         )
@@ -111,6 +114,7 @@ def _download_from_yfinance(
     # if the provider ever attaches one so parquet round-trips cleanly.
     if df.index.tz is not None:
         df.index = df.index.tz_localize(None)
+    df.attrs["price_adjustment"] = PRICE_ADJUSTMENT_VERSION
     return df
 
 
@@ -211,6 +215,18 @@ def load_ohlcv(
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
+    # Caches created before adjusted OHLC was enabled contain raw pre-split
+    # prices. Mixing those rows with newly adjusted bars creates a visible
+    # step at the split date, so rebuild each legacy cache once in full.
+    if auto_download and df.attrs.get("price_adjustment") != PRICE_ADJUSTMENT_VERSION:
+        adjusted = _download_from_yfinance(ticker, interval=interval)
+        if adjusted is not None and not adjusted.empty:
+            df = adjusted
+            try:
+                df.to_parquet(path)
+            except Exception as e:
+                print(f"[data] failed to migrate adjusted {interval} cache for {ticker}: {e}")
+
     # ----- Incremental refresh and gap repair ------------------------------
     # The cache used to be "write once, read forever", so technical
     # indicators (MA/RSI/MACD) were computed on whatever bars happened to
@@ -277,6 +293,7 @@ def load_ohlcv(
                 merged = pd.concat([df, df_new])
                 merged = merged[~merged.index.duplicated(keep="last")]
                 merged = merged.sort_index()
+                merged.attrs["price_adjustment"] = PRICE_ADJUSTMENT_VERSION
                 try:
                     merged.to_parquet(path)
                 except Exception as e:
