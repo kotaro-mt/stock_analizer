@@ -104,13 +104,9 @@ def _macd_distance_text(
     cross_type: str | None = None,
 ) -> str:
     """Describe the current distance to the next MACD cross."""
-    if cross_type == "gc":
-        return "⬆️ **GC発生**"
-    if cross_type == "dc":
-        return "⬇️ **DC発生**"
     gap = abs(macd_value - signal_value)
     next_cross = "GC" if macd_value <= signal_value else "DC"
-    return f"{next_cross}まであと `{gap:.2f}`"
+    return f"{next_cross}まで `{gap:.2f}`"
 
 
 def _notification_mode(ticker_cfg: dict) -> str:
@@ -183,10 +179,7 @@ def _collect_ticker_statuses(
                         "type": "weekly_macd_cross",
                         "label": "週足MACD",
                         "status": status,
-                        "detail": (
-                            f"MACD `{ws.macd_val:+.2f}` / Signal `{ws.signal_val:+.2f}`"
-                            f" ｜ {distance}"
-                        ),
+                        "detail": distance,
                     })
             except Exception:
                 pass
@@ -216,10 +209,7 @@ def _collect_ticker_statuses(
                             "type": "daily_macd_cross",
                             "label": "日足MACD",
                             "status": d_status,
-                            "detail": (
-                                f"MACD `{curr_m:+.2f}` / Signal `{curr_s:+.2f}`"
-                                f" ｜ {distance}"
-                            ),
+                            "detail": distance,
                         })
             except Exception:
                 pass

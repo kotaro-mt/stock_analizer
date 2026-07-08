@@ -269,12 +269,20 @@ class DiscordNotifier:
         else:
             header = f"**{ticker}　{name}**"
 
+        current_price = ts.get("current_price")
         change_pct = ts.get("previous_change_pct")
+        if current_price is None:
+            current_text = "—"
+        elif ticker.endswith(".T"):
+            current_text = f"{current_price:,.0f}円"
+        else:
+            current_text = f"{current_price:,.2f}"
         if change_pct is None:
-            price_line = "　前日比: `—`"
+            change_text = "前日比: `—`"
         else:
             arrow = "▲" if change_pct > 0 else "▼" if change_pct < 0 else "→"
-            price_line = f"　{arrow} 前日比: `{change_pct:+.2f}%`"
+            change_text = f"{arrow} 前日比: `{change_pct:+.2f}%`"
+        price_line = f"　現在値: `{current_text}` ｜ {change_text}"
 
         check_lines: list[str] = []
         for chk in checks:
