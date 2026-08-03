@@ -22,7 +22,11 @@
     },
     "7203.T": {
       "last_cross": "gc",
-      "cross_date": "2026-07-31"
+      "cross_date": "2026-08-07"
+    },
+    "8001.T": {
+      "last_cross": "gc",
+      "cross_date": "2026-08-07"
     }
   },
   "daily_macd_cross": {},
