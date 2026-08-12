@@ -27,6 +27,10 @@
     "8001.T": {
       "last_cross": "gc",
       "cross_date": "2026-08-07"
+    },
+    "ONON": {
+      "last_cross": "dc",
+      "cross_date": "2026-08-14"
     }
   },
   "daily_macd_cross": {},
