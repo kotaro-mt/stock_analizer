@@ -9,12 +9,28 @@
       "cross_date": "2026-06-26"
     },
     "AMZN": {
-      "last_cross": "dc",
-      "cross_date": "2026-06-26"
+      "last_cross": "gc",
+      "cross_date": "2026-08-07"
     },
     "NVDA": {
+      "last_cross": "gc",
+      "cross_date": "2026-08-07"
+    },
+    "7532.T": {
+      "last_cross": "gc",
+      "cross_date": "2026-07-24"
+    },
+    "7203.T": {
+      "last_cross": "gc",
+      "cross_date": "2026-08-07"
+    },
+    "8001.T": {
+      "last_cross": "gc",
+      "cross_date": "2026-08-07"
+    },
+    "ONON": {
       "last_cross": "dc",
-      "cross_date": "2026-06-26"
+      "cross_date": "2026-08-14"
     }
   },
   "daily_macd_cross": {},
