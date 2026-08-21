@@ -190,8 +190,13 @@
       "notifications_enabled": true,
       "weekly_macd_cross": true,
       "daily_macd_cross": false,
-      "price_alert": false,
-      "price_alerts": [],
+      "price_alert": true,
+      "price_alerts": [
+        {
+          "price": 4735.0,
+          "direction": "below"
+        }
+      ],
       "date_alerts": [],
       "trendline_alert": true,
       "trendlines": []
