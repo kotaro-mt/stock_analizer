@@ -210,7 +210,16 @@
       "price_alerts": [],
       "date_alerts": [],
       "trendline_alert": true,
-      "trendlines": []
+      "trendlines": [
+        {
+          "x0": "2026-05-11",
+          "y0": 2250.35,
+          "x1": "2026-08-25",
+          "y1": 2489.93,
+          "yref": "y",
+          "target": "price"
+        }
+      ]
     }
   }
 }
