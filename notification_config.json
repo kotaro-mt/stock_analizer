@@ -222,7 +222,7 @@
       ]
     },
     "^VIX": {
-      "notification_mode": "all",
+      "notification_mode": "alerts_only",
       "notifications_enabled": true,
       "weekly_macd_cross": false,
       "daily_macd_cross": true,
