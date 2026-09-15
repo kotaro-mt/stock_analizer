@@ -139,7 +139,12 @@
       "daily_macd_cross": false,
       "price_alert": false,
       "price_alerts": [],
-      "date_alerts": [],
+      "date_alerts": [
+        {
+          "date": "2027-02-10",
+          "label": ""
+        }
+      ],
       "trendline_alert": true,
       "trendlines": []
     },
