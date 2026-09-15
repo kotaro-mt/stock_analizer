@@ -40,8 +40,8 @@
       "date_alerts": [],
       "trendlines": [],
       "trendline_alert": true,
-      "notifications_enabled": false,
-      "notification_mode": "off"
+      "notifications_enabled": true,
+      "notification_mode": "all"
     },
     "5253.T": {
       "weekly_macd_cross": true,
