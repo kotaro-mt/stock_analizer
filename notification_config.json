@@ -137,8 +137,13 @@
       "notifications_enabled": true,
       "weekly_macd_cross": true,
       "daily_macd_cross": false,
-      "price_alert": false,
-      "price_alerts": [],
+      "price_alert": true,
+      "price_alerts": [
+        {
+          "price": 620.0,
+          "direction": "below"
+        }
+      ],
       "date_alerts": [
         {
           "date": "2027-02-10",
