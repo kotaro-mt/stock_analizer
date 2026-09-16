@@ -35,6 +35,10 @@
     "4751.T": {
       "last_cross": "dc",
       "cross_date": "2026-08-21"
+    },
+    "7013.T": {
+      "last_cross": "gc",
+      "cross_date": "2026-09-18"
     }
   },
   "daily_macd_cross": {},
