@@ -39,6 +39,10 @@
     "7013.T": {
       "last_cross": "gc",
       "cross_date": "2026-09-18"
+    },
+    "9984.T": {
+      "last_cross": "gc",
+      "cross_date": "2026-10-02"
     }
   },
   "daily_macd_cross": {
