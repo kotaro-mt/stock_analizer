@@ -2,7 +2,7 @@
   "weekly_macd_cross": {
     "5253.T": {
       "last_cross": "dc",
-      "cross_date": "2026-06-26"
+      "cross_date": "2026-11-06"
     },
     "GOOG": {
       "last_cross": "dc",
@@ -51,8 +51,8 @@
   },
   "daily_macd_cross": {
     "^VIX": {
-      "last_cross": "dc",
-      "cross_date": "2026-10-29"
+      "last_cross": "gc",
+      "cross_date": "2026-10-30"
     }
   },
   "price_alert": {
