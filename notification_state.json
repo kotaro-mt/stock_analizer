@@ -51,8 +51,8 @@
   },
   "daily_macd_cross": {
     "^VIX": {
-      "last_cross": "gc",
-      "cross_date": "2026-10-30"
+      "last_cross": "dc",
+      "cross_date": "2026-11-11"
     }
   },
   "price_alert": {
