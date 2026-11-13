@@ -2,7 +2,7 @@
   "weekly_macd_cross": {
     "5253.T": {
       "last_cross": "dc",
-      "cross_date": "2026-06-26"
+      "cross_date": "2026-11-13"
     },
     "GOOG": {
       "last_cross": "dc",
@@ -14,11 +14,11 @@
     },
     "NVDA": {
       "last_cross": "dc",
-      "cross_date": "2026-09-18"
+      "cross_date": "2026-10-16"
     },
     "7532.T": {
-      "last_cross": "dc",
-      "cross_date": "2026-09-04"
+      "last_cross": "gc",
+      "cross_date": "2026-11-13"
     },
     "7203.T": {
       "last_cross": "gc",
@@ -29,15 +29,32 @@
       "cross_date": "2026-08-07"
     },
     "ONON": {
-      "last_cross": "dc",
-      "cross_date": "2026-08-14"
+      "last_cross": "gc",
+      "cross_date": "2026-10-09"
     },
     "4751.T": {
+      "last_cross": "gc",
+      "cross_date": "2026-11-13"
+    },
+    "7013.T": {
       "last_cross": "dc",
-      "cross_date": "2026-08-21"
+      "cross_date": "2026-10-16"
+    },
+    "9984.T": {
+      "last_cross": "gc",
+      "cross_date": "2026-10-09"
+    },
+    "8267.T": {
+      "last_cross": "dc",
+      "cross_date": "2026-10-23"
     }
   },
-  "daily_macd_cross": {},
+  "daily_macd_cross": {
+    "^VIX": {
+      "last_cross": "dc",
+      "cross_date": "2026-11-11"
+    }
+  },
   "price_alert": {
     "7013.T_above_2000.0": {
       "notified": true,
